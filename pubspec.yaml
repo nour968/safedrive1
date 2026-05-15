@@ -38,6 +38,7 @@ dependencies:
   image_picker: ^1.0.7
   photo_manager: ^3.6.0
   vision_gallery_saver: ^3.0.0
+  shared_preferences: ^2.2.3
   http: ^1.2.0
   socket_io_client: ^2.0.3+1
   # The following adds the Cupertino Icons font to your application.

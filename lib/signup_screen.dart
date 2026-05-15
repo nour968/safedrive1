@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:untitled1/Splash_Screen.dart';
-import 'profile_screen.dart';
 import 'login_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key}); //
@@ -28,7 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool hasNumber = false;
   bool hasSpecial = false;
   bool hasLength = false;
-
+  final String baseUrl = "http://192.168.1.7:8000";
   /// 🌍 Language helper
   String text(BuildContext context, String en, String ar) {
     return Localizations.localeOf(context).languageCode == 'ar' ? ar : en;
@@ -92,7 +93,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (!RegExp(r"^[a-zA-Zأ-ي\s]+$").hasMatch(value)) return text(context, "Only letters allowed", "يسمح فقط بالحروف");
     return null;
   }
+  String normalizeDigits(String input) {
+    const arabic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    const english = ['0','1','2','3','4','5','6','7','8','9'];
 
+    for (int i = 0; i < arabic.length; i++) {
+      input = input.replaceAll(arabic[i], english[i]);
+    }
+    return input;
+  }
   String? ageValidator(String? value) {
     if (value == null || value.isEmpty) return text(context, "Required", "مطلوب");
 
@@ -140,11 +149,115 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   String? licensePlateValidator(String? value) {
-    if (value == null || value.isEmpty) return text(context, "Required", "مطلوب");
-    if (!RegExp(r'^[0-9٠-٩]{1,4}-[أ-ي](\s[أ-ي]){1,2}$').hasMatch(value)) {
-      return text(context, "Invalid format e.g. 1234-أ ب ج", "صيغة غير صحيحة، مثال: 1234-أ ب ج");
+    if (value == null || value.trim().isEmpty) {
+      return text(context, "Required", "مطلوب");
     }
+
+    String input = value.trim();
+
+    // Normalize Arabic digits → English digits
+    const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    const englishDigits = ['0','1','2','3','4','5','6','7','8','9'];
+
+    for (int i = 0; i < arabicDigits.length; i++) {
+      input = input.replaceAll(arabicDigits[i], englishDigits[i]);
+    }
+
+    // Clean multiple spaces
+    input = input.replaceAll(RegExp(r'\s+'), ' ');
+
+    // ONLY Arabic letters allowed (أ-ي range)
+    final regex = RegExp(r'^[0-9]{1,4}\s*-\s*[أ-ي](\s+[أ-ي]){0,2}$');
+
+    if (!regex.hasMatch(input)) {
+      return text(
+        context,
+        "Invalid format e.g. 1234-أ ب ج",
+        "صيغة غير صحيحة مثل 1234-أ ب ج",
+      );
+    }
+
     return null;
+  }
+  Future<void> signUpUser() async {
+
+    try {
+
+      final response = await http.post(
+
+        Uri.parse("$baseUrl/signup"),
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: jsonEncode({
+
+          "first_name":
+          firstNameController.text.trim(),
+
+          "last_name":
+          lastNameController.text.trim(),
+
+          "age": normalizeDigits(ageController.text.trim()),
+
+          "username":
+          usernameController.text.trim(),
+
+          "email":
+          emailController.text.trim(),
+
+          "password":
+          passwordController.text.trim(),
+
+          "national_id": normalizeDigits(nationalIdController.text.trim()),
+
+          "license_plate":
+          licensePlateController.text.trim(),
+
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      print(data);
+
+      if (data["status"] == "success") {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Sign Up Successful"),
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoginScreen(),
+          ),
+        );
+
+      } else {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data["message"]),
+          ),
+        );
+
+      }
+
+    } catch (e) {
+
+      print(e);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error: $e"),
+        ),
+      );
+
+    }
   }
 
   @override
@@ -281,17 +394,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           ),
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(text(context, "Sign Up Successful", "تم إنشاء الحساب بنجاح")),
-                                ),
-                              );
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ProfileScreen(),
-                                ),
-                              );
+                              signUpUser();
                             }
                           },
                           child: Text(
