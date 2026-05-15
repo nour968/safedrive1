@@ -1,6 +1,5 @@
 package com.example.untitled1;
 
-import java.net.URISyntaxException;
 import io.socket.client.IO;
 import io.socket.client.Socket;
 
@@ -13,13 +12,25 @@ public class SocketManager {
         if (socket == null) {
 
             try {
+
                 IO.Options options = new IO.Options();
-                options.transports = new String[]{"websocket"};
+
+                // IMPORTANT
+                options.forceNew = true;
                 options.reconnection = true;
 
-                socket = IO.socket("http://192.168.1.23:8000", options);
+                // USE BOTH
+                options.transports = new String[] {
+                        "websocket",
+                        "polling"
+                };
 
-            } catch (URISyntaxException e) {
+                socket = IO.socket(
+                        "http://192.168.1.64:8000",
+                        options
+                );
+
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
