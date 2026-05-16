@@ -1,28 +1,37 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'ConfirmPassword_Screen.dart';
 
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key});
+  final String email;
+
+  const OtpScreen({super.key, required this.email});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> {
+  // 🔥 NOW 5 DIGITS
   final List<TextEditingController> controllers =
-  List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> focusNodes =
-  List.generate(4, (_) => FocusNode());
+  List.generate(5, (_) => TextEditingController());
 
-  /// 🌍 Localization helper
+  final List<FocusNode> focusNodes =
+  List.generate(5, (_) => FocusNode());
+
+  bool isLoading = false;
+
   String text(BuildContext context, String en, String ar) {
     return Localizations.localeOf(context).languageCode == 'ar' ? ar : en;
   }
 
-  bool get isOtpComplete => controllers.every((c) => c.text.isNotEmpty);
+  bool get isOtpComplete =>
+      controllers.every((c) => c.text.isNotEmpty);
 
   void nextField(int index, String value) {
-    if (value.isNotEmpty && index < 3) {
+    if (value.isNotEmpty && index < 4) {
       focusNodes[index + 1].requestFocus();
     }
     setState(() {});
@@ -30,8 +39,8 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Widget otpBox(int index) {
     return SizedBox(
-      width: 60,
-      height: 60,
+      width: 55,
+      height: 55,
       child: TextField(
         controller: controllers[index],
         focusNode: focusNodes[index],
@@ -52,25 +61,81 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  void verifyOtp() {
+  // ======================================================
+  // VERIFY OTP (5 DIGITS)
+  // ======================================================
+  Future<void> verifyOtp() async {
     String otp = controllers.map((c) => c.text).join();
-    if (otp.length == 4) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ConfirmPasswordScreen()),
+
+    // 🔥 NOW 5 DIGITS CHECK
+    if (otp.length != 5) return;
+
+    setState(() => isLoading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse("http://192.168.1.61:8000/verify-otp"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": widget.email,
+          "otp": otp,
+        }),
       );
-    } else {
+
+      final data = jsonDecode(response.body);
+
+      setState(() => isLoading = false);
+
+      if (data["status"] == "success") {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ConfirmPasswordScreen(email: widget.email),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"])),
+        );
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(text(context, "Enter valid OTP", "أدخل رمز تحقق صحيح")),
-        ),
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
+
+  // ======================================================
+  // RESEND OTP
+  // ======================================================
+  Future<void> resendOtp() async {
+    try {
+      final response = await http.post(
+        Uri.parse("http://192.168.1.61:8000/send-otp"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": widget.email,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data["message"])),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isRtl = Localizations.localeOf(context).languageCode == 'ar';
+    final isRtl =
+        Localizations.localeOf(context).languageCode == 'ar';
+
     return Directionality(
       textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
@@ -88,30 +153,41 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(
             children: [
               const SizedBox(height: 60),
+
               Text(
                 text(context, "OTP Verification", "التحقق من الرمز"),
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.bold),
               ),
+
               const SizedBox(height: 15),
+
               Text(
-                text(context,
-                    "Enter the OTP sent to your phone",
-                    "أدخل رمز التحقق المرسل إلى هاتفك"),
+                text(
+                  context,
+                  "Enter OTP sent to ${widget.email}",
+                  "أدخل الرمز المرسل إلى ${widget.email}",
+                ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.grey),
               ),
+
               const SizedBox(height: 40),
+
+              // 🔥 NOW 5 BOXES
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(4, (index) => otpBox(index)),
+                children: List.generate(5, (index) => otpBox(index)),
               ),
+
               const SizedBox(height: 25),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(text(context, "Didn't receive OTP? ", "لم تستلم الرمز؟ ")),
                   GestureDetector(
-                    onTap: () {}, // TODO: Implement resend OTP
+                    onTap: resendOtp,
                     child: Text(
                       text(context, "Resend OTP", "إعادة الإرسال"),
                       style: const TextStyle(
@@ -122,7 +198,9 @@ class _OtpScreenState extends State<OtpScreen> {
                   ),
                 ],
               ),
+
               const SizedBox(height: 35),
+
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -130,16 +208,21 @@ class _OtpScreenState extends State<OtpScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isOtpComplete
                         ? const Color(0xFF8BC98B)
-                        : Colors.grey.shade400,
+                        : Colors.grey,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                   onPressed: isOtpComplete ? verifyOtp : null,
-                  child: Text(
-                    text(context, "VERIFY & PROCEED", "تحقق واستمر"),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(
+                    text(context,
+                        "VERIFY & PROCEED",
+                        "تحقق واستمر"),
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, letterSpacing: 1,color: Colors.white),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
                   ),
                 ),
               ),

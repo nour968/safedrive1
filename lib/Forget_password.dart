@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'OTP_page.dart';
 
 class ForgetPasswordScreen extends StatefulWidget {
@@ -12,38 +15,82 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
 
+  bool isLoading = false;
+
   /// 🌍 Localization helper
   String text(BuildContext context, String en, String ar) {
     return Localizations.localeOf(context).languageCode == 'ar' ? ar : en;
   }
 
-  Widget buildTextField(BuildContext context, String hint) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: TextFormField(
-        controller: emailController,
-        decoration: InputDecoration(
-          hintText: hint,
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(25),
+  Future<void> sendOtp() async {
+    setState(() => isLoading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse("http://192.168.1.61:8000/send-otp"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": emailController.text.trim(),
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      setState(() => isLoading = false);
+
+      if (data["status"] == "success") {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(email: emailController.text.trim()),
           ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "Error")),
+        );
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Server error: $e")),
+      );
+    }
+  }
+
+  Widget buildEmailField(BuildContext context) {
+    return TextFormField(
+      controller: emailController,
+      keyboardType: TextInputType.emailAddress,
+      decoration: InputDecoration(
+        hintText: text(context, "Enter your email", "أدخل بريدك الإلكتروني"),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(25),
         ),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return text(context, "Email cannot be empty", "لا يمكن أن يكون البريد الإلكتروني فارغًا");
-          }
-          return null;
-        },
       ),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return text(
+              context, "Email cannot be empty", "لا يمكن ترك البريد فارغ");
+        }
+        if (!value.contains("@")) {
+          return text(
+              context, "Enter valid email", "أدخل بريد إلكتروني صحيح");
+        }
+        return null;
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isRtl = Localizations.localeOf(context).languageCode == 'ar';
+    final isRtl =
+        Localizations.localeOf(context).languageCode == 'ar';
 
     return Directionality(
       textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
@@ -65,16 +112,36 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 80),
+
                 Text(
-                  text(context, "Forgot password?", "نسيت كلمة المرور؟"),
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                  text(context, "Forgot Password?", "نسيت كلمة المرور؟"),
                   textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+
+                const SizedBox(height: 15),
+
+                Text(
+                  text(
+                    context,
+                    "Enter your email to receive OTP",
+                    "أدخل بريدك لاستلام رمز التحقق",
+                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+
                 const SizedBox(height: 40),
-                buildTextField(context, text(context, "Email", "البريد الإلكتروني")),
+
+                buildEmailField(context),
+
                 const SizedBox(height: 30),
+
                 SizedBox(
-                  height: 50,
+                  height: 52,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF8BC98B),
@@ -82,17 +149,24 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
                         borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    onPressed: () {
+                    onPressed: isLoading
+                        ? null
+                        : () {
                       if (_formKey.currentState!.validate()) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const OtpScreen()),
-                        );
+                        sendOtp();
                       }
                     },
-                    child: Text(
-                      text(context, "SUBMIT", "إرسال"),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold,color: Colors.white),
+                    child: isLoading
+                        ? const CircularProgressIndicator(
+                      color: Colors.white,
+                    )
+                        : Text(
+                      text(context, "SEND OTP", "إرسال الرمز"),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
