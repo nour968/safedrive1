@@ -12,10 +12,10 @@ import 'camera_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   SocketService.connect(); // 🔥 START REAL-TIME CONNECTION
-
   runApp(const MyApp());
+
+
 
 }
 
