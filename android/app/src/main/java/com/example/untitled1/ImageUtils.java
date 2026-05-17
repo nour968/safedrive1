@@ -1,14 +1,16 @@
 package com.example.untitled1;
 
 import android.media.Image;
+import androidx.camera.core.ImageProxy;
+
 import java.nio.ByteBuffer;
 
 public class ImageUtils {
 
-    // Convert YUV_420_888 image to NV21 byte array
-    public static byte[] imageToByteArray(Image image) {
+    // REQUIRED METHOD (matches your CameraActivity call)
+    public static byte[] toByteArray(ImageProxy image) {
 
-        Image.Plane[] planes = image.getPlanes();
+        ImageProxy.PlaneProxy[] planes = image.getPlanes();
 
         ByteBuffer yBuffer = planes[0].getBuffer();
         ByteBuffer uBuffer = planes[1].getBuffer();
@@ -21,8 +23,19 @@ public class ImageUtils {
         byte[] nv21 = new byte[ySize + uSize + vSize];
 
         yBuffer.get(nv21, 0, ySize);
-        vBuffer.get(nv21, ySize, vSize);
-        uBuffer.get(nv21, ySize + vSize, uSize);
+
+        byte[] uBytes = new byte[uSize];
+        byte[] vBytes = new byte[vSize];
+
+        uBuffer.get(uBytes);
+        vBuffer.get(vBytes);
+
+        int pos = ySize;
+
+        for (int i = 0; i < uSize; i++) {
+            nv21[pos++] = vBytes[i];
+            nv21[pos++] = uBytes[i];
+        }
 
         return nv21;
     }
