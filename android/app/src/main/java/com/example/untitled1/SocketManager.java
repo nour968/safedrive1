@@ -23,8 +23,6 @@ public class SocketManager {
                         new String[]{"websocket", "polling"};
 
                 options.reconnection = true;
-                options.forceNew = false;
-                options.timeout = 20000;
 
                 socket = IO.socket(
                         "http://192.168.1.64:8000",
@@ -32,31 +30,33 @@ public class SocketManager {
                 );
 
                 socket.on(Socket.EVENT_CONNECT, args -> {
-                    Log.d("SOCKET", "CONNECTED SUCCESSFULLY");
-                });
 
-                socket.on(Socket.EVENT_DISCONNECT, args -> {
-                    Log.e("SOCKET", "DISCONNECTED");
+                    Log.d(
+                            "SOCKET",
+                            "CONNECTED SUCCESSFULLY"
+                    );
+
+                    // REGISTER DRIVER
+                    socket.emit(
+                            "register_driver",
+                            1
+                    );
                 });
 
                 socket.on(Socket.EVENT_CONNECT_ERROR, args -> {
 
-                    Log.e("SOCKET", "CONNECT ERROR");
+                    Log.e(
+                            "SOCKET",
+                            "CONNECT ERROR"
+                    );
 
                     if (args.length > 0) {
+
                         Log.e(
                                 "SOCKET",
                                 args[0].toString()
                         );
                     }
-                });
-
-                socket.on("new_alert", args -> {
-
-                    Log.d(
-                            "SOCKET",
-                            "NEW ALERT RECEIVED"
-                    );
                 });
 
                 socket.connect();
