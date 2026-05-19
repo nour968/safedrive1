@@ -1,9 +1,6 @@
 package com.example.untitled1;
 
 import android.graphics.Bitmap;
-import android.graphics.ImageFormat;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.util.Base64;
@@ -22,60 +19,60 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import io.socket.client.Socket;
 import okhttp3.*;
 
 public class CameraActivity extends AppCompatActivity {
 
+    private static final String TAG = "CAMERA_DEBUG";
+
     private PreviewView previewView;
-
-    private final OkHttpClient client =
-            new OkHttpClient();
-
     private Socket socket;
-
     private MediaPlayer mediaPlayer;
+
+    private final OkHttpClient client = new OkHttpClient();
 
     private static final String SERVER_URL =
             "http://192.168.1.64:8000/frame";
 
+    // ✅ FIX: dedicated background thread for camera frames
+    private final ExecutorService cameraExecutor =
+            Executors.newSingleThreadExecutor();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
         super.onCreate(savedInstanceState);
 
-        previewView = new PreviewView(this);
+        Log.d(TAG, "onCreate START");
 
+        previewView = new PreviewView(this);
         setContentView(previewView);
 
-        mediaPlayer = MediaPlayer.create(
-                this,
-                R.raw.alert
-        );
+        mediaPlayer = MediaPlayer.create(this, R.raw.alert);
 
         socket = SocketManager.getSocket();
 
         listenForAlerts();
-
         startCamera();
+
+        Log.d(TAG, "setup complete");
     }
 
-    // =====================================================
-    // ALERTS
-    // =====================================================
-
+    // ================= ALERT =================
     private void listenForAlerts() {
 
         socket.on("new_alert", args -> {
 
+            if (args == null || args.length == 0) return;
+
             try {
+                JSONObject data = (JSONObject) args[0];
+                String eventType = data.optString("event_type");
 
-                JSONObject data =
-                        (JSONObject) args[0];
-
-                String eventType =
-                        data.getString("event_type");
+                Log.d(TAG, "ALERT RECEIVED: " + data);
 
                 runOnUiThread(() -> {
 
@@ -85,126 +82,110 @@ public class CameraActivity extends AppCompatActivity {
                             Toast.LENGTH_LONG
                     ).show();
 
-                    if (!mediaPlayer.isPlaying()) {
-
-                        mediaPlayer.start();
+                    if (mediaPlayer != null) {
+                        try {
+                            mediaPlayer.start();
+                        } catch (Exception e) {
+                            Log.e(TAG, "MediaPlayer error", e);
+                        }
                     }
                 });
 
             } catch (Exception e) {
-
-                e.printStackTrace();
+                Log.e(TAG, "alert parse error", e);
             }
         });
     }
 
-    // =====================================================
-    // CAMERA
-    // =====================================================
-
+    // ================= CAMERA =================
     private void startCamera() {
 
-        ListenableFuture<ProcessCameraProvider>
-                cameraProviderFuture =
+        Log.d(TAG, "startCamera() called");
+
+        ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(this);
 
-        cameraProviderFuture.addListener(() -> {
+        future.addListener(() -> {
 
             try {
+                ProcessCameraProvider cameraProvider = future.get();
 
-                ProcessCameraProvider cameraProvider =
-                        cameraProviderFuture.get();
+                cameraProvider.unbindAll();
 
-                Preview preview =
-                        new Preview.Builder().build();
+                Preview preview = new Preview.Builder().build();
 
                 preview.setSurfaceProvider(
                         previewView.getSurfaceProvider()
                 );
 
-                ImageAnalysis imageAnalysis =
+                ImageAnalysis analysis =
                         new ImageAnalysis.Builder()
                                 .setBackpressureStrategy(
-                                        ImageAnalysis
-                                                .STRATEGY_KEEP_ONLY_LATEST
+                                        ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
+                                )
+                                .setOutputImageFormat(
+                                        ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888
                                 )
                                 .build();
 
-                imageAnalysis.setAnalyzer(
-                        ContextCompat.getMainExecutor(this),
+                // ================= IMPORTANT FIX =================
+                analysis.setAnalyzer(cameraExecutor, image -> {
 
-                        image -> {
+                    Log.d(TAG, "ANALYZER FIRED");
 
-                            try {
+                    try {
+                        Log.d(TAG, "FRAME RECEIVED");
 
-                                Bitmap bitmap =
-                                        imageProxyToBitmap(image);
+                        Bitmap bitmap =
+                                BitmapUtils.imageProxyToBitmap(image);
 
-                                sendFrame(bitmap);
-
-                            } catch (Exception e) {
-
-                                e.printStackTrace();
-
-                            } finally {
-
-                                image.close();
-                            }
+                        if (bitmap == null) {
+                            Log.e(TAG, "Bitmap is NULL");
+                            return;
                         }
-                );
+
+                        sendFrame(bitmap);
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "frame processing error", e);
+                    } finally {
+                        image.close();
+                    }
+                });
 
                 CameraSelector selector =
                         new CameraSelector.Builder()
-                                .requireLensFacing(
-                                        CameraSelector
-                                                .LENS_FACING_FRONT
-                                )
+                                .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
                                 .build();
-
-                cameraProvider.unbindAll();
 
                 cameraProvider.bindToLifecycle(
                         this,
                         selector,
                         preview,
-                        imageAnalysis
+                        analysis
                 );
 
-            } catch (
-                    ExecutionException |
-                    InterruptedException e
-            ) {
+                Log.d(TAG, "CAMERA BOUND SUCCESS");
 
-                e.printStackTrace();
+            } catch (ExecutionException | InterruptedException e) {
+                Log.e(TAG, "camera error", e);
             }
 
         }, ContextCompat.getMainExecutor(this));
     }
 
-    // =====================================================
-    // SEND FRAME
-    // =====================================================
-
+    // ================= SEND FRAME =================
     private void sendFrame(Bitmap bitmap) {
 
         try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
-            ByteArrayOutputStream baos =
-                    new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 30, baos);
 
-            bitmap.compress(
-                    Bitmap.CompressFormat.JPEG,
-                    30,
-                    baos
+            String base64 = Base64.encodeToString(
+                    baos.toByteArray(),
+                    Base64.NO_WRAP
             );
-
-            byte[] bytes = baos.toByteArray();
-
-            String base64 =
-                    Base64.encodeToString(
-                            bytes,
-                            Base64.NO_WRAP
-                    );
 
             String json =
                     "{"
@@ -212,99 +193,46 @@ public class CameraActivity extends AppCompatActivity {
                             + "\"driver_id\":1"
                             + "}";
 
-            RequestBody body =
-                    RequestBody.create(
-                            json,
-                            MediaType.parse(
-                                    "application/json"
-                            )
-                    );
-
-            Request request =
-                    new Request.Builder()
-                            .url(SERVER_URL)
-                            .post(body)
-                            .build();
-
-            client.newCall(request).enqueue(
-                    new Callback() {
-
-                        @Override
-                        public void onFailure(
-                                Call call,
-                                java.io.IOException e
-                        ) {
-
-                            Log.e(
-                                    "UPLOAD",
-                                    "FAILED"
-                            );
-                        }
-
-                        @Override
-                        public void onResponse(
-                                Call call,
-                                Response response
-                        ) {
-
-                            Log.d(
-                                    "UPLOAD",
-                                    "FRAME SENT"
-                            );
-
-                            response.close();
-                        }
-                    }
+            RequestBody body = RequestBody.create(
+                    json,
+                    MediaType.parse("application/json")
             );
 
-        } catch (Exception e) {
+            Request request = new Request.Builder()
+                    .url(SERVER_URL)
+                    .post(body)
+                    .build();
 
-            e.printStackTrace();
+            client.newCall(request).enqueue(new Callback() {
+
+                @Override
+                public void onFailure(Call call, java.io.IOException e) {
+                    Log.e(TAG, "UPLOAD FAILED", e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    Log.d(TAG, "FRAME SENT SUCCESSFULLY");
+                    response.close();
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "sendFrame error", e);
         }
     }
 
-    // =====================================================
-    // IMAGE CONVERSION
-    // =====================================================
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
 
-    private Bitmap imageProxyToBitmap(
-            ImageProxy image
-    ) {
+        if (cameraExecutor != null) {
+            cameraExecutor.shutdown();
+        }
 
-        byte[] nv21 =
-                ImageUtils.toByteArray(image);
-
-        YuvImage yuvImage =
-                new YuvImage(
-                        nv21,
-                        ImageFormat.NV21,
-                        image.getWidth(),
-                        image.getHeight(),
-                        null
-                );
-
-        ByteArrayOutputStream out =
-                new ByteArrayOutputStream();
-
-        yuvImage.compressToJpeg(
-                new Rect(
-                        0,
-                        0,
-                        image.getWidth(),
-                        image.getHeight()
-                ),
-                50,
-                out
-        );
-
-        byte[] imageBytes =
-                out.toByteArray();
-
-        return android.graphics.BitmapFactory
-                .decodeByteArray(
-                        imageBytes,
-                        0,
-                        imageBytes.length
-                );
+        if (socket != null) {
+            socket.off();
+            socket.disconnect();
+        }
     }
 }
