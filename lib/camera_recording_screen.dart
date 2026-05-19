@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
-
-import 'Home_Screen.dart';
+import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 
 class CameraRecordingScreen extends StatefulWidget {
   const CameraRecordingScreen({super.key});
@@ -18,33 +19,42 @@ class _CameraRecordingScreenState
     extends State<CameraRecordingScreen> {
 
   CameraController? controller;
-  List<CameraDescription>? cameras;
 
-  int currentCameraIndex = 0;
+  bool isStreaming = false;
 
-  bool isRecording = false;
-  bool isPaused = false;
-  bool cameraClosed = false;
+  bool isSendingFrame = false;
 
-  Timer? timer;
-  int seconds = 0;
+  Timer? frameTimer;
+
+  static const String SERVER_URL =
+      "http://192.168.1.64:8000/frame";
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
+
+    initCamera();
   }
 
-  /// 🔥 INIT CAMERA
-  Future<void> _initCamera() async {
+  // ================= CAMERA =================
+
+  Future<void> initCamera() async {
+
     try {
 
-      cameras = await availableCameras();
+      final cameras = await availableCameras();
+
+      final frontCamera = cameras.firstWhere(
+            (camera) =>
+        camera.lensDirection ==
+            CameraLensDirection.front,
+      );
 
       controller = CameraController(
-        cameras![currentCameraIndex],
-        ResolutionPreset.high,
-        enableAudio: true,
+        frontCamera,
+        ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
       );
 
       await controller!.initialize();
@@ -53,281 +63,306 @@ class _CameraRecordingScreenState
 
       setState(() {});
 
-      await _startRecording();
+      debugPrint("CAMERA INITIALIZED");
+
+      startStreaming();
 
     } catch (e) {
-      debugPrint("Camera init error: $e");
+
+      debugPrint("CAMERA INIT ERROR: $e");
     }
   }
 
-  /// 🔁 FLIP CAMERA
-  Future<void> _flipCamera() async {
+  // ================= STREAM =================
 
-    if (cameras == null || cameras!.length < 2) return;
+  Future<void> startStreaming() async {
 
-    try {
+    if (controller == null) return;
 
-      currentCameraIndex =
-          (currentCameraIndex + 1) % cameras!.length;
+    if (isStreaming) return;
 
-      await controller?.dispose();
+    isStreaming = true;
 
-      controller = CameraController(
-        cameras![currentCameraIndex],
-        ResolutionPreset.high,
-        enableAudio: true,
-      );
+    debugPrint("STREAM STARTED");
 
-      await controller!.initialize();
+    await controller!.startImageStream(
 
-      if (!mounted) return;
+          (CameraImage image) async {
 
-      setState(() {});
+        if (isSendingFrame) return;
 
-    } catch (e) {
-      debugPrint("Flip error: $e");
-    }
-  }
+        isSendingFrame = true;
 
-  /// ⏱ TIMER
-  String get formattedTime {
-    int m = seconds ~/ 60;
-    int s = seconds % 60;
+        try {
 
-    return "${m.toString().padLeft(2, '0')}:"
-        "${s.toString().padLeft(2, '0')}";
-  }
+          debugPrint("FRAME RECEIVED");
 
-  void startTimer() {
-    timer?.cancel();
+          Uint8List? jpegBytes =
+          convertYUV420ToJpeg(image);
 
-    timer = Timer.periodic(
-      const Duration(seconds: 1),
-          (_) {
-        if (!mounted) return;
+          if (jpegBytes == null) {
 
-        setState(() {
-          seconds++;
-        });
+            debugPrint("JPEG CONVERSION FAILED");
+
+            isSendingFrame = false;
+
+            return;
+          }
+
+          String base64Image =
+          base64Encode(jpegBytes);
+
+          await sendFrame(base64Image);
+
+        } catch (e) {
+
+          debugPrint("STREAM ERROR: $e");
+
+        } finally {
+
+          isSendingFrame = false;
+        }
       },
     );
   }
 
-  /// ▶ START RECORDING
-  Future<void> _startRecording() async {
+  // ================= SEND FRAME =================
+
+  Future<void> sendFrame(String base64Image) async {
 
     try {
 
-      await Future.delayed(const Duration(milliseconds: 300));
+      final response = await http.post(
 
-      await controller!.startVideoRecording();
+        Uri.parse(SERVER_URL),
 
-      startTimer();
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-      setState(() {
-        isRecording = true;
-      });
+        body: jsonEncode({
+
+          "image": base64Image,
+
+          "driver_id": 1,
+        }),
+      );
+
+      debugPrint(
+          "FRAME SENT => ${response.statusCode}");
+
+      debugPrint(
+          "SERVER RESPONSE => ${response.body}");
 
     } catch (e) {
-      debugPrint("Start error: $e");
+
+      debugPrint("UPLOAD ERROR: $e");
     }
   }
 
-  /// ⏸ PAUSE / RESUME
-  Future<void> _togglePause() async {
+  // ================= IMAGE CONVERSION =================
 
-    if (!isRecording) return;
+  Uint8List? convertYUV420ToJpeg(
+      CameraImage image) {
 
     try {
 
-      if (isPaused) {
-        await controller!.resumeVideoRecording();
-        startTimer();
-      } else {
-        await controller!.pauseVideoRecording();
-        timer?.cancel();
+      final int width = image.width;
+
+      final int height = image.height;
+
+      final img.Image rgbImage =
+      img.Image(
+        width: width,
+        height: height,
+      );
+
+      final planeY = image.planes[0];
+
+      final planeU = image.planes[1];
+
+      final planeV = image.planes[2];
+
+      final int uvRowStride =
+          planeU.bytesPerRow;
+
+      final int uvPixelStride =
+          planeU.bytesPerPixel ?? 1;
+
+      for (int y = 0; y < height; y++) {
+
+        for (int x = 0; x < width; x++) {
+
+          final int uvIndex =
+              uvPixelStride * (x ~/ 2) +
+                  uvRowStride * (y ~/ 2);
+
+          final int index =
+              y * width + x;
+
+          final yp =
+          planeY.bytes[index];
+
+          final up =
+          planeU.bytes[uvIndex];
+
+          final vp =
+          planeV.bytes[uvIndex];
+
+          int r =
+          (yp + vp * 1436 / 1024 - 179)
+              .round();
+
+          int g =
+          (yp -
+              up * 46549 / 131072 +
+              44 -
+              vp * 93604 / 131072 +
+              91)
+              .round();
+
+          int b =
+          (yp + up * 1814 / 1024 - 227)
+              .round();
+
+          r = r.clamp(0, 255);
+
+          g = g.clamp(0, 255);
+
+          b = b.clamp(0, 255);
+
+          rgbImage.setPixelRgb(
+              x,
+              y,
+              r,
+              g,
+              b
+          );
+        }
       }
 
-      setState(() {
-        isPaused = !isPaused;
-      });
+      return Uint8List.fromList(
 
-    } catch (e) {
-      debugPrint("Pause error: $e");
-    }
-  }
-
-  /// 📌 REAL SAVE TO GALLERY
-  Future<bool> saveVideoToGallery(String filePath) async {
-
-    final permission = await PhotoManager.requestPermissionExtend();
-
-    if (!permission.isAuth) {
-      debugPrint("Permission denied");
-      return false;
-    }
-
-    final file = File(filePath);
-
-    final entity = await PhotoManager.editor.saveVideo(
-      file,
-      title: "MyApp_${DateTime.now().millisecondsSinceEpoch}",
-    );
-
-    return entity != null;
-  }
-
-  /// ⏹ STOP RECORDING
-  Future<void> _stopRecording() async {
-
-    try {
-
-      timer?.cancel();
-
-      final file =
-      await controller!.stopVideoRecording();
-
-      debugPrint("Temp path: ${file.path}");
-
-      /// ✅ SAVE TO GALLERY
-      final saved = await saveVideoToGallery(file.path);
-
-      debugPrint(saved
-          ? "Saved to gallery"
-          : "Save failed");
-
-      await controller?.dispose();
-      controller = null;
-
-      setState(() {
-        cameraClosed = true;
-      });
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text("Saved"),
-          content: Text(
-            saved
-                ? "Video saved successfully!"
-                : "Failed to save video",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const HomeScreen(),
-                  ),
-                );
-              },
-              child: const Text("OK"),
-            ),
-          ],
+        img.encodeJpg(
+          rgbImage,
+          quality: 40,
         ),
       );
 
     } catch (e) {
-      debugPrint("Stop error: $e");
+
+      debugPrint(
+          "IMAGE CONVERSION ERROR: $e");
+
+      return null;
     }
   }
 
+  // ================= STOP STREAM =================
+
+  Future<void> stopStreaming() async {
+
+    try {
+
+      if (controller != null &&
+          controller!.value.isStreamingImages) {
+
+        await controller!.stopImageStream();
+
+        debugPrint("STREAM STOPPED");
+      }
+
+    } catch (e) {
+
+      debugPrint("STOP STREAM ERROR: $e");
+    }
+  }
+
+  // ================= DISPOSE =================
+
   @override
   void dispose() {
-    timer?.cancel();
+
+    stopStreaming();
+
     controller?.dispose();
+
     super.dispose();
   }
+
+  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
 
-    if (cameraClosed ||
-        controller == null ||
+    if (controller == null ||
         !controller!.value.isInitialized) {
 
       return const Scaffold(
         backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
       );
     }
 
     return Scaffold(
+
       backgroundColor: Colors.black,
 
       body: Stack(
+
         children: [
 
-          /// 🎥 CAMERA PREVIEW
           SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller!.value.previewSize!.height,
-                height: controller!.value.previewSize!.width,
-                child: CameraPreview(controller!),
-              ),
-            ),
+            child: CameraPreview(controller!),
           ),
 
-          /// 🔴 TIMER
           Positioned(
-            top: 50,
+
+            top: 40,
+
             left: 20,
-            child: Row(
-              children: [
-                const Icon(Icons.fiber_manual_record,
-                    color: Colors.red),
-                const SizedBox(width: 10),
-                Text(
-                  formattedTime,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          /// ⏸ PAUSE
-          Positioned(
-            bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 - 120,
-            child: FloatingActionButton(
-              backgroundColor: Colors.white,
-              onPressed: _togglePause,
-              child: Icon(
-                isPaused ? Icons.play_arrow : Icons.pause,
-                color: const Color(0xFF8BC98B),
+            child: IconButton(
+
+              icon: const Icon(
+                Icons.arrow_back,
+                color: Colors.white,
+                size: 30,
               ),
+
+              onPressed: () async {
+
+                await stopStreaming();
+
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+              },
             ),
           ),
 
-          /// ⏹ STOP
           Positioned(
-            bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 - 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.red,
-              onPressed: _stopRecording,
-              child: const Icon(Icons.stop),
-            ),
-          ),
 
-          /// 🔁 FLIP
-          Positioned(
             bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 + 80,
-            child: FloatingActionButton(
-              backgroundColor: Colors.white,
-              onPressed: _flipCamera,
-              child: const Icon(Icons.cameraswitch),
+
+            left: 0,
+
+            right: 0,
+
+            child: const Center(
+
+              child: Text(
+
+                "AI STREAMING ACTIVE",
+
+                style: TextStyle(
+                  color: Colors.green,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
