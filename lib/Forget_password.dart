@@ -27,7 +27,7 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("http://192.168.1.61:8000/send-otp"),
+        Uri.parse("http://192.168.1.9:8000/send-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "email": emailController.text.trim(),
