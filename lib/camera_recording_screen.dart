@@ -1,14 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 
+import 'Home_Screen.dart';
+import 'services/api_service.dart';
+import 'services/alert_listener_service.dart';
+
 class CameraRecordingScreen extends StatefulWidget {
-  const CameraRecordingScreen({super.key});
+  final int driverId;
+
+  const CameraRecordingScreen({
+    super.key,
+    required this.driverId,
+  });
 
   @override
   State<CameraRecordingScreen> createState() =>
@@ -22,23 +29,35 @@ class _CameraRecordingScreenState
 
   bool isStreaming = false;
 
-  bool isSendingFrame = false;
+  bool isPaused = false;
 
-  Timer? frameTimer;
+  bool processingFrame = false;
 
-  static const String SERVER_URL =
-      "http://192.168.1.64:8000/frame";
+  bool isDisposed = false;
+
+  Timer? timer;
+
+  int seconds = 0;
+
+  // =====================================================
+  // INIT
+  // =====================================================
 
   @override
   void initState() {
     super.initState();
 
-    initCamera();
+    // 🚨 START LIVE ALERT LISTENER
+    AlertListenerService.start(context);
+
+    initializeCamera();
   }
 
-  // ================= CAMERA =================
+  // =====================================================
+  // INITIALIZE CAMERA
+  // =====================================================
 
-  Future<void> initCamera() async {
+  Future<void> initializeCamera() async {
 
     try {
 
@@ -48,6 +67,7 @@ class _CameraRecordingScreenState
             (camera) =>
         camera.lensDirection ==
             CameraLensDirection.front,
+        orElse: () => cameras.first,
       );
 
       controller = CameraController(
@@ -63,9 +83,7 @@ class _CameraRecordingScreenState
 
       setState(() {});
 
-      debugPrint("CAMERA INITIALIZED");
-
-      startStreaming();
+      await startStreaming();
 
     } catch (e) {
 
@@ -73,7 +91,100 @@ class _CameraRecordingScreenState
     }
   }
 
-  // ================= STREAM =================
+  // =====================================================
+  // TIMER
+  // =====================================================
+
+  void startTimer() {
+
+    timer?.cancel();
+
+    timer = Timer.periodic(
+      const Duration(seconds: 1),
+          (_) {
+
+        if (!mounted) return;
+
+        if (isPaused) return;
+
+        setState(() {
+          seconds++;
+        });
+      },
+    );
+  }
+
+  String get formattedTime {
+
+    int minutes = seconds ~/ 60;
+
+    int remainingSeconds = seconds % 60;
+
+    return
+      "${minutes.toString().padLeft(2, '0')}:"
+          "${remainingSeconds.toString().padLeft(2, '0')}";
+  }
+
+  // =====================================================
+  // YUV420 -> RGB
+  // =====================================================
+
+  img.Image convertYUV420ToImage(CameraImage image) {
+
+    final int width = image.width;
+    final int height = image.height;
+
+    final uvRowStride = image.planes[1].bytesPerRow;
+    final uvPixelStride = image.planes[1].bytesPerPixel!;
+
+    final img.Image rgbImage = img.Image(
+      width: width,
+      height: height,
+    );
+
+    for (int y = 0; y < height; y++) {
+
+      final int uvRow = uvRowStride * (y >> 1);
+
+      for (int x = 0; x < width; x++) {
+
+        final int uvIndex =
+            uvRow + (x >> 1) * uvPixelStride;
+
+        final int index = y * width + x;
+
+        final yp = image.planes[0].bytes[index];
+
+        final up = image.planes[1].bytes[uvIndex];
+
+        final vp = image.planes[2].bytes[uvIndex];
+
+        int r = (yp + vp * 1436 / 1024 - 179).round();
+
+        int g = (
+            yp -
+                up * 46549 / 131072 +
+                44 -
+                vp * 93604 / 131072 +
+                91
+        ).round();
+
+        int b = (yp + up * 1814 / 1024 - 227).round();
+
+        r = r.clamp(0, 255);
+        g = g.clamp(0, 255);
+        b = b.clamp(0, 255);
+
+        rgbImage.setPixelRgb(x, y, r, g, b);
+      }
+    }
+
+    return rgbImage;
+  }
+
+  // =====================================================
+  // START STREAM
+  // =====================================================
 
   Future<void> startStreaming() async {
 
@@ -81,216 +192,147 @@ class _CameraRecordingScreenState
 
     if (isStreaming) return;
 
+    if (!controller!.value.isInitialized) return;
+
     isStreaming = true;
 
-    debugPrint("STREAM STARTED");
+    startTimer();
 
     await controller!.startImageStream(
 
           (CameraImage image) async {
 
-        if (isSendingFrame) return;
+        if (!mounted) return;
 
-        isSendingFrame = true;
+        if (isDisposed) return;
+
+        if (processingFrame) return;
+
+        if (isPaused) return;
+
+        processingFrame = true;
 
         try {
 
-          debugPrint("FRAME RECEIVED");
+          final convertedImage =
+          convertYUV420ToImage(image);
 
-          Uint8List? jpegBytes =
-          convertYUV420ToJpeg(image);
+          final rotatedImage = img.copyRotate(
+            convertedImage,
+            angle: 270,
+          );
 
-          if (jpegBytes == null) {
+          final fixedImage = img.flipHorizontal(
+            rotatedImage,
+          );
 
-            debugPrint("JPEG CONVERSION FAILED");
+          final jpg = img.encodeJpg(
+            fixedImage,
+            quality: 70,
+          );
 
-            isSendingFrame = false;
+          final base64Image = base64Encode(jpg);
 
-            return;
-          }
+          await ApiService.sendFrame(
 
-          String base64Image =
-          base64Encode(jpegBytes);
+            driverId: widget.driverId,
 
-          await sendFrame(base64Image);
+            imageBase64: base64Image,
+          );
 
         } catch (e) {
 
-          debugPrint("STREAM ERROR: $e");
-
-        } finally {
-
-          isSendingFrame = false;
+          debugPrint(
+            "STREAM ERROR: $e",
+          );
         }
+
+        processingFrame = false;
       },
     );
   }
 
-  // ================= SEND FRAME =================
+  // =====================================================
+  // PAUSE
+  // =====================================================
 
-  Future<void> sendFrame(String base64Image) async {
+  void togglePause() {
 
-    try {
+    setState(() {
 
-      final response = await http.post(
-
-        Uri.parse(SERVER_URL),
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: jsonEncode({
-
-          "image": base64Image,
-
-          "driver_id": 1,
-        }),
-      );
-
-      debugPrint(
-          "FRAME SENT => ${response.statusCode}");
-
-      debugPrint(
-          "SERVER RESPONSE => ${response.body}");
-
-    } catch (e) {
-
-      debugPrint("UPLOAD ERROR: $e");
-    }
+      isPaused = !isPaused;
+    });
   }
 
-  // ================= IMAGE CONVERSION =================
+  // =====================================================
+  // STOP SESSION
+  // =====================================================
 
-  Uint8List? convertYUV420ToJpeg(
-      CameraImage image) {
+  Future<void> stopSession() async {
+
+    if (isDisposed) return;
+
+    isDisposed = true;
+
+    timer?.cancel();
 
     try {
 
-      final int width = image.width;
+      if (controller != null) {
 
-      final int height = image.height;
+        if (controller!.value.isStreamingImages) {
 
-      final img.Image rgbImage =
-      img.Image(
-        width: width,
-        height: height,
-      );
-
-      final planeY = image.planes[0];
-
-      final planeU = image.planes[1];
-
-      final planeV = image.planes[2];
-
-      final int uvRowStride =
-          planeU.bytesPerRow;
-
-      final int uvPixelStride =
-          planeU.bytesPerPixel ?? 1;
-
-      for (int y = 0; y < height; y++) {
-
-        for (int x = 0; x < width; x++) {
-
-          final int uvIndex =
-              uvPixelStride * (x ~/ 2) +
-                  uvRowStride * (y ~/ 2);
-
-          final int index =
-              y * width + x;
-
-          final yp =
-          planeY.bytes[index];
-
-          final up =
-          planeU.bytes[uvIndex];
-
-          final vp =
-          planeV.bytes[uvIndex];
-
-          int r =
-          (yp + vp * 1436 / 1024 - 179)
-              .round();
-
-          int g =
-          (yp -
-              up * 46549 / 131072 +
-              44 -
-              vp * 93604 / 131072 +
-              91)
-              .round();
-
-          int b =
-          (yp + up * 1814 / 1024 - 227)
-              .round();
-
-          r = r.clamp(0, 255);
-
-          g = g.clamp(0, 255);
-
-          b = b.clamp(0, 255);
-
-          rgbImage.setPixelRgb(
-              x,
-              y,
-              r,
-              g,
-              b
-          );
+          await controller!.stopImageStream();
         }
-      }
 
-      return Uint8List.fromList(
-
-        img.encodeJpg(
-          rgbImage,
-          quality: 40,
-        ),
-      );
-
-    } catch (e) {
-
-      debugPrint(
-          "IMAGE CONVERSION ERROR: $e");
-
-      return null;
-    }
-  }
-
-  // ================= STOP STREAM =================
-
-  Future<void> stopStreaming() async {
-
-    try {
-
-      if (controller != null &&
-          controller!.value.isStreamingImages) {
-
-        await controller!.stopImageStream();
-
-        debugPrint("STREAM STOPPED");
+        await controller!.dispose();
       }
 
     } catch (e) {
 
-      debugPrint("STOP STREAM ERROR: $e");
+      debugPrint("STOP ERROR: $e");
     }
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+
+      context,
+
+      MaterialPageRoute(
+
+        builder: (_) => const HomeScreen(),
+      ),
+    );
   }
 
-  // ================= DISPOSE =================
+  // =====================================================
+  // DISPOSE
+  // =====================================================
 
   @override
   void dispose() {
+    AlertListenerService.stop();
 
-    stopStreaming();
+    isDisposed = true;
 
-    controller?.dispose();
+    timer?.cancel();
+
+    try {
+      if (controller != null) {
+        if (controller!.value.isStreamingImages) {
+          controller!.stopImageStream();
+        }
+
+        controller!.dispose();
+      }
+    } catch (_) {}
 
     super.dispose();
   }
-
-  // ================= UI =================
+  // =====================================================
+  // UI
+  // =====================================================
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +341,9 @@ class _CameraRecordingScreenState
         !controller!.value.isInitialized) {
 
       return const Scaffold(
+
         backgroundColor: Colors.black,
+
         body: Center(
           child: CircularProgressIndicator(),
         ),
@@ -314,54 +358,85 @@ class _CameraRecordingScreenState
 
         children: [
 
-          SizedBox.expand(
-            child: CameraPreview(controller!),
+          Positioned.fill(
+
+            child: CameraPreview(
+              controller!,
+            ),
           ),
 
           Positioned(
 
-            top: 40,
-
+            top: 50,
             left: 20,
 
-            child: IconButton(
+            child: Row(
 
-              icon: const Icon(
-                Icons.arrow_back,
-                color: Colors.white,
-                size: 30,
-              ),
+              children: [
 
-              onPressed: () async {
+                const Icon(
+                  Icons.fiber_manual_record,
+                  color: Colors.red,
+                ),
 
-                await stopStreaming();
+                const SizedBox(width: 10),
 
-                if (mounted) {
-                  Navigator.pop(context);
-                }
-              },
+                Text(
+
+                  formattedTime,
+
+                  style: const TextStyle(
+
+                    color: Colors.white,
+
+                    fontSize: 20,
+
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
 
           Positioned(
 
             bottom: 40,
+            left: 60,
 
-            left: 0,
+            child: FloatingActionButton(
 
-            right: 0,
+              heroTag: "pause_btn",
 
-            child: const Center(
+              backgroundColor: Colors.white,
 
-              child: Text(
+              onPressed: togglePause,
 
-                "AI STREAMING ACTIVE",
+              child: Icon(
 
-                style: TextStyle(
-                  color: Colors.green,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                isPaused
+                    ? Icons.play_arrow
+                    : Icons.pause,
+
+                color: Colors.green,
+              ),
+            ),
+          ),
+
+          Positioned(
+
+            bottom: 40,
+            right: 60,
+
+            child: FloatingActionButton(
+
+              heroTag: "stop_btn",
+
+              backgroundColor: Colors.red,
+
+              onPressed: stopSession,
+
+              child: const Icon(
+                Icons.stop,
               ),
             ),
           ),

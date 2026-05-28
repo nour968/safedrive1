@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'camera_recording_screen.dart';
 import 'nav_bar.dart';
 
-// 🔥 ADD THESE IMPORTS
 import 'services/api_service.dart';
 import 'services/socket_service.dart';
+import 'services/alert_listener_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,16 +16,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool isOpeningCamera = false;
 
   @override
   void initState() {
     super.initState();
 
-    // 🔥 Connect to live backend alerts
+    // 🔥 CONNECT SOCKET ONCE
     SocketService.connect();
+
+    // 🌍 GLOBAL ALERT SYSTEM (works everywhere)
+    AlertListenerService.start(context);
   }
 
-  // 🔥 Language helper
+
   String text(BuildContext context, String en, String ar) {
     String lang = Localizations.localeOf(context).languageCode;
     return lang == "ar" ? ar : en;
@@ -46,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.grey.shade300,
             blurRadius: 6,
             offset: const Offset(0, 3),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -63,10 +70,33 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 10),
           Text("${text(context, "Date", "التاريخ")}: $date"),
           Text("${text(context, "Time", "الوقت")}: $time"),
-          Text("${text(context, "Number of Alerts", "عدد التنبيهات")}: $alerts"),
+          Text("${text(context, "Alerts", "التنبيهات")}: $alerts"),
         ],
       ),
     );
+  }
+
+  Future<void> openCamera() async {
+    if (isOpeningCamera) return;
+    isOpeningCamera = true;
+
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      int driverId = prefs.getInt("user_id") ?? 1;
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CameraRecordingScreen(driverId: driverId),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Open camera error: $e");
+    } finally {
+      isOpeningCamera = false;
+    }
   }
 
   @override
@@ -74,78 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
     String lang = Localizations.localeOf(context).languageCode;
 
     return Directionality(
-      textDirection:
-      lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        drawer: Drawer(
-          child: Column(
-            children: [
-
-              Container(
-                height: 120,
-                color: Colors.black,
-                alignment: Alignment.center,
-                child: const Text(
-                  "Alerto",
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: 22,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              ListTile(
-                leading: const Icon(Icons.person, color: Colors.green),
-                title: Text(text(context, "Profile", "الملف الشخصي")),
-                onTap: () {
-                  Navigator.pushReplacementNamed(context, '/profile');
-                },
-              ),
-
-              ListTile(
-                leading: const Icon(Icons.history, color: Colors.green),
-                title: Text(text(context, "History", "السجل")),
-                onTap: () {
-                  Navigator.pushReplacementNamed(context, '/history');
-                },
-              ),
-
-              const Spacer(),
-
-              const Divider(),
-
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: Text(
-                  text(context, "Logout", "تسجيل الخروج"),
-                  style: const TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/login',
-                        (route) => false,
-                  );
-                },
-              ),
-
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Color(0xFF8BC98B)),
-          title: Image.asset(
-            "assets/Logo_alerto-removebg-preview.png",
-            height: 100,
-          ),
-        ),
-
         bottomNavigationBar: const CustomBottomNavBar(currentIndex: 0),
 
         body: Padding(
@@ -165,17 +125,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 20),
 
-              Align(
-                alignment: lang == "ar"
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Text(
-                  text(context, "Recent Sessions", "الجلسات الأخيرة"),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              Text(
+                text(context, "Recent Sessions", "الجلسات الأخيرة"),
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 10),
@@ -198,53 +151,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 20),
 
-              // 🔥 TEST BACKEND CONNECTION BUTTON
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8BC98B),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: () {
+              ElevatedButton(
+                onPressed: () async {
+                  SharedPreferences prefs =
+                  await SharedPreferences.getInstance();
 
-                    // 🔥 SEND TEST EVENT TO FLASK
-                    ApiService.sendEvent(
-                      driverId: 1,
-                      eventType: "TestEvent",
-                      confidence: 0.95,
-                    );
-                  },
-                  child: const Text(
-                    "Send Test Event",
-                    style: TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
+                  int driverId = prefs.getInt("user_id") ?? 1;
+
+                  ApiService.sendEvent(
+                    driverId: driverId,
+                    eventType: "TestEvent",
+                    confidence: 0.95,
+                  );
+                },
+                child: const Text("Send Test Event"),
               ),
 
               const SizedBox(height: 10),
 
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8BC98B),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pushReplacementNamed(context, '/camera');
-                  },
-                  child: Text(
-                    text(context, "Start Session", "ابدأ الجلسة"),
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ),
+              ElevatedButton(
+                onPressed: openCamera,
+                child: const Text("Start Session"),
               ),
             ],
           ),

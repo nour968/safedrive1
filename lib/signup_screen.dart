@@ -29,7 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool hasNumber = false;
   bool hasSpecial = false;
   bool hasLength = false;
-  final String baseUrl = "http://192.168.1.7:8000";
+  final String baseUrl = "http://192.168.1.64:8000";
   /// 🌍 Language helper
   String text(BuildContext context, String en, String ar) {
     return Localizations.localeOf(context).languageCode == 'ar' ? ar : en;

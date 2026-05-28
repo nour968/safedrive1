@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:untitled1/Home_Screen.dart';
+
+import 'Home_Screen.dart';
 import 'camera_recording_screen.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -13,13 +14,12 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
 
-  bool isControllerDisposed = false;
+  bool isDisposed = false;
 
   @override
   void initState() {
     super.initState();
 
-    /// ✅ SAFE INIT
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initCamera();
     });
@@ -47,29 +47,26 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {});
 
       Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _showPermissionPopup();
+        if (mounted) _showPopup();
       });
-
     } catch (e) {
       debugPrint("Camera init error: $e");
     }
   }
 
-  void _showPermissionPopup() {
+  void _showPopup() {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (_) {
         return AlertDialog(
           title: const Text("Camera Recording"),
           content: const Text("Start recording session?"),
           actions: [
 
-            /// ❌ DENY
             TextButton(
               onPressed: () async {
-
-                isControllerDisposed = true;
+                isDisposed = true;
 
                 await controller?.dispose();
                 controller = null;
@@ -86,11 +83,9 @@ class _CameraScreenState extends State<CameraScreen> {
               child: const Text("Deny"),
             ),
 
-            /// ✅ ALLOW
             TextButton(
               onPressed: () async {
-
-                isControllerDisposed = true;
+                isDisposed = true;
 
                 await controller?.dispose();
                 controller = null;
@@ -102,7 +97,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const CameraRecordingScreen(),
+                    builder: (_) => CameraRecordingScreen(driverId: 1),
                   ),
                 );
               },
@@ -117,19 +112,16 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    isControllerDisposed = true;
+    isDisposed = true;
     controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-
-    /// ✅ SAFE CHECK (IMPORTANT FIX)
     if (controller == null ||
         !controller!.value.isInitialized ||
-        isControllerDisposed) {
-
+        isDisposed) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator()),
@@ -141,34 +133,19 @@ class _CameraScreenState extends State<CameraScreen> {
       body: Stack(
         children: [
 
-          /// 📷 CAMERA PREVIEW
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller!.value.previewSize!.height,
-                height: controller!.value.previewSize!.width,
-                child: CameraPreview(controller!),
-              ),
-            ),
+          Positioned.fill(
+            child: CameraPreview(controller!),
           ),
 
-          /// 🔙 BACK BUTTON
           Positioned(
             top: 40,
             left: 10,
             child: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () async {
-
-                isControllerDisposed = true;
-
+                isDisposed = true;
                 await controller?.dispose();
-                controller = null;
-
-                if (mounted) {
-                  Navigator.pop(context);
-                }
+                if (mounted) Navigator.pop(context);
               },
             ),
           ),
