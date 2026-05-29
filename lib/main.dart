@@ -1,32 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:untitled1/profile_screen.dart';
-import 'package:untitled1/signup_screen.dart';
-import 'login_screen.dart';
-import 'services/socket_service.dart';
-// Screens
-import 'Splash_Screen.dart'; // WelcomeScreen
-import 'history_screen.dart';
-import 'home_screen.dart';
-import 'camera_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+import 'Splash_Screen.dart';
+import 'login_screen.dart';
+import 'signup_screen.dart';
+import 'home_screen.dart';
+import 'profile_screen.dart';
+import 'history_screen.dart';
+import 'services/socket_service.dart';
+import 'camera_recording_screen.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  SocketService.connect(); // 🔥 START REAL-TIME CONNECTION
+  // 🔥 CONNECT SOCKET IMMEDIATELY
+  SocketService.connect();
 
   runApp(const MyApp());
-
 }
 
-// 🔥 Changed to StatefulWidget
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  // 👉 Function to change language from anywhere
   static void setLocale(BuildContext context, Locale locale) {
-    final _MyAppState? state =
-    context.findAncestorStateOfType<_MyAppState>();
+    final _MyAppState? state = context.findAncestorStateOfType<_MyAppState>();
     state?.setLocale(locale);
   }
 
@@ -37,7 +35,6 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   Locale? _locale;
 
-  // 👉 Update locale
   void setLocale(Locale locale) {
     setState(() {
       _locale = locale;
@@ -47,10 +44,11 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      builder: (context, child) {
+        return HeroControllerScope.none(child: child!);
+      },
       debugShowCheckedModeBanner: false,
       title: 'Alerto',
-
-      // 🌍 Localization
       supportedLocales: const [
         Locale('en'),
         Locale('ar'),
@@ -60,21 +58,15 @@ class _MyAppState extends State<MyApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-
-      // 🔥 Dynamic language
       locale: _locale,
-
-      // 🧭 Routes
       initialRoute: '/',
       routes: {
         '/': (context) => const WelcomeScreen(),
         '/home': (context) => const HomeScreen(),
-        '/camera': (context) => const CameraScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/signup': (context) => const SignUpScreen(),
         '/login': (context) => const LoginScreen(),
+        '/signup': (context) => const SignUpScreen(),
+        '/profile': (context) => const ProfileScreen(),
         '/history': (context) => const HistoryScreen(),
-        '/splash': (context) => const WelcomeScreen(),
       },
     );
   }}

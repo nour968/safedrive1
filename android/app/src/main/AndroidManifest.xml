@@ -16,6 +16,7 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/LaunchTheme"
         android:usesCleartextTraffic="true">
+        android:enableOnBackInvokedCallback="true"
 
         <activity
             android:name=".MainActivity"

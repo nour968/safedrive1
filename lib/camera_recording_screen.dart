@@ -1,13 +1,21 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
+import 'package:image/image.dart' as img;
 
 import 'Home_Screen.dart';
+import 'services/api_service.dart';
+import 'services/alert_listener_service.dart';
 
 class CameraRecordingScreen extends StatefulWidget {
-  const CameraRecordingScreen({super.key});
+  final int driverId;
+
+  const CameraRecordingScreen({
+    super.key,
+    required this.driverId,
+  });
 
   @override
   State<CameraRecordingScreen> createState() =>
@@ -18,33 +26,55 @@ class _CameraRecordingScreenState
     extends State<CameraRecordingScreen> {
 
   CameraController? controller;
-  List<CameraDescription>? cameras;
 
-  int currentCameraIndex = 0;
+  bool isStreaming = false;
 
-  bool isRecording = false;
   bool isPaused = false;
-  bool cameraClosed = false;
+
+  bool processingFrame = false;
+
+  bool isDisposed = false;
 
   Timer? timer;
+
   int seconds = 0;
+
+  // =====================================================
+  // INIT
+  // =====================================================
 
   @override
   void initState() {
     super.initState();
-    _initCamera();
+
+    // 🚨 START LIVE ALERT LISTENER
+    AlertListenerService.start(context);
+
+    initializeCamera();
   }
 
-  /// 🔥 INIT CAMERA
-  Future<void> _initCamera() async {
+  // =====================================================
+  // INITIALIZE CAMERA
+  // =====================================================
+
+  Future<void> initializeCamera() async {
+
     try {
 
-      cameras = await availableCameras();
+      final cameras = await availableCameras();
+
+      final frontCamera = cameras.firstWhere(
+            (camera) =>
+        camera.lensDirection ==
+            CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
 
       controller = CameraController(
-        cameras![currentCameraIndex],
-        ResolutionPreset.high,
-        enableAudio: true,
+        frontCamera,
+        ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
       );
 
       await controller!.initialize();
@@ -53,58 +83,29 @@ class _CameraRecordingScreenState
 
       setState(() {});
 
-      await _startRecording();
+      await startStreaming();
 
     } catch (e) {
-      debugPrint("Camera init error: $e");
+
+      debugPrint("CAMERA INIT ERROR: $e");
     }
   }
 
-  /// 🔁 FLIP CAMERA
-  Future<void> _flipCamera() async {
-
-    if (cameras == null || cameras!.length < 2) return;
-
-    try {
-
-      currentCameraIndex =
-          (currentCameraIndex + 1) % cameras!.length;
-
-      await controller?.dispose();
-
-      controller = CameraController(
-        cameras![currentCameraIndex],
-        ResolutionPreset.high,
-        enableAudio: true,
-      );
-
-      await controller!.initialize();
-
-      if (!mounted) return;
-
-      setState(() {});
-
-    } catch (e) {
-      debugPrint("Flip error: $e");
-    }
-  }
-
-  /// ⏱ TIMER
-  String get formattedTime {
-    int m = seconds ~/ 60;
-    int s = seconds % 60;
-
-    return "${m.toString().padLeft(2, '0')}:"
-        "${s.toString().padLeft(2, '0')}";
-  }
+  // =====================================================
+  // TIMER
+  // =====================================================
 
   void startTimer() {
+
     timer?.cancel();
 
     timer = Timer.periodic(
       const Duration(seconds: 1),
           (_) {
+
         if (!mounted) return;
+
+        if (isPaused) return;
 
         setState(() {
           seconds++;
@@ -113,221 +114,330 @@ class _CameraRecordingScreenState
     );
   }
 
-  /// ▶ START RECORDING
-  Future<void> _startRecording() async {
+  String get formattedTime {
 
-    try {
+    int minutes = seconds ~/ 60;
 
-      await Future.delayed(const Duration(milliseconds: 300));
+    int remainingSeconds = seconds % 60;
 
-      await controller!.startVideoRecording();
-
-      startTimer();
-
-      setState(() {
-        isRecording = true;
-      });
-
-    } catch (e) {
-      debugPrint("Start error: $e");
-    }
+    return
+      "${minutes.toString().padLeft(2, '0')}:"
+          "${remainingSeconds.toString().padLeft(2, '0')}";
   }
 
-  /// ⏸ PAUSE / RESUME
-  Future<void> _togglePause() async {
+  // =====================================================
+  // YUV420 -> RGB
+  // =====================================================
 
-    if (!isRecording) return;
+  img.Image convertYUV420ToImage(CameraImage image) {
 
-    try {
+    final int width = image.width;
+    final int height = image.height;
 
-      if (isPaused) {
-        await controller!.resumeVideoRecording();
-        startTimer();
-      } else {
-        await controller!.pauseVideoRecording();
-        timer?.cancel();
-      }
+    final uvRowStride = image.planes[1].bytesPerRow;
+    final uvPixelStride = image.planes[1].bytesPerPixel!;
 
-      setState(() {
-        isPaused = !isPaused;
-      });
-
-    } catch (e) {
-      debugPrint("Pause error: $e");
-    }
-  }
-
-  /// 📌 REAL SAVE TO GALLERY
-  Future<bool> saveVideoToGallery(String filePath) async {
-
-    final permission = await PhotoManager.requestPermissionExtend();
-
-    if (!permission.isAuth) {
-      debugPrint("Permission denied");
-      return false;
-    }
-
-    final file = File(filePath);
-
-    final entity = await PhotoManager.editor.saveVideo(
-      file,
-      title: "MyApp_${DateTime.now().millisecondsSinceEpoch}",
+    final img.Image rgbImage = img.Image(
+      width: width,
+      height: height,
     );
 
-    return entity != null;
+    for (int y = 0; y < height; y++) {
+
+      final int uvRow = uvRowStride * (y >> 1);
+
+      for (int x = 0; x < width; x++) {
+
+        final int uvIndex =
+            uvRow + (x >> 1) * uvPixelStride;
+
+        final int index = y * width + x;
+
+        final yp = image.planes[0].bytes[index];
+
+        final up = image.planes[1].bytes[uvIndex];
+
+        final vp = image.planes[2].bytes[uvIndex];
+
+        int r = (yp + vp * 1436 / 1024 - 179).round();
+
+        int g = (
+            yp -
+                up * 46549 / 131072 +
+                44 -
+                vp * 93604 / 131072 +
+                91
+        ).round();
+
+        int b = (yp + up * 1814 / 1024 - 227).round();
+
+        r = r.clamp(0, 255);
+        g = g.clamp(0, 255);
+        b = b.clamp(0, 255);
+
+        rgbImage.setPixelRgb(x, y, r, g, b);
+      }
+    }
+
+    return rgbImage;
   }
 
-  /// ⏹ STOP RECORDING
-  Future<void> _stopRecording() async {
+  // =====================================================
+  // START STREAM
+  // =====================================================
+
+  Future<void> startStreaming() async {
+
+    if (controller == null) return;
+
+    if (isStreaming) return;
+
+    if (!controller!.value.isInitialized) return;
+
+    isStreaming = true;
+
+    startTimer();
+
+    await controller!.startImageStream(
+
+          (CameraImage image) async {
+
+        if (!mounted) return;
+
+        if (isDisposed) return;
+
+        if (processingFrame) return;
+
+        if (isPaused) return;
+
+        processingFrame = true;
+
+        try {
+
+          final convertedImage =
+          convertYUV420ToImage(image);
+
+          final rotatedImage = img.copyRotate(
+            convertedImage,
+            angle: 270,
+          );
+
+          final fixedImage = img.flipHorizontal(
+            rotatedImage,
+          );
+
+          final jpg = img.encodeJpg(
+            fixedImage,
+            quality: 70,
+          );
+
+          final base64Image = base64Encode(jpg);
+
+          await ApiService.sendFrame(
+
+            driverId: widget.driverId,
+
+            imageBase64: base64Image,
+          );
+
+        } catch (e) {
+
+          debugPrint(
+            "STREAM ERROR: $e",
+          );
+        }
+
+        processingFrame = false;
+      },
+    );
+  }
+
+  // =====================================================
+  // PAUSE
+  // =====================================================
+
+  void togglePause() {
+
+    setState(() {
+
+      isPaused = !isPaused;
+    });
+  }
+
+  // =====================================================
+  // STOP SESSION
+  // =====================================================
+
+  Future<void> stopSession() async {
+
+    if (isDisposed) return;
+
+    isDisposed = true;
+
+    timer?.cancel();
 
     try {
 
-      timer?.cancel();
+      if (controller != null) {
 
-      final file =
-      await controller!.stopVideoRecording();
+        if (controller!.value.isStreamingImages) {
 
-      debugPrint("Temp path: ${file.path}");
+          await controller!.stopImageStream();
+        }
 
-      /// ✅ SAVE TO GALLERY
-      final saved = await saveVideoToGallery(file.path);
-
-      debugPrint(saved
-          ? "Saved to gallery"
-          : "Save failed");
-
-      await controller?.dispose();
-      controller = null;
-
-      setState(() {
-        cameraClosed = true;
-      });
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text("Saved"),
-          content: Text(
-            saved
-                ? "Video saved successfully!"
-                : "Failed to save video",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const HomeScreen(),
-                  ),
-                );
-              },
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
+        await controller!.dispose();
+      }
 
     } catch (e) {
-      debugPrint("Stop error: $e");
+
+      debugPrint("STOP ERROR: $e");
     }
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+
+      context,
+
+      MaterialPageRoute(
+
+        builder: (_) => const HomeScreen(),
+      ),
+    );
   }
+
+  // =====================================================
+  // DISPOSE
+  // =====================================================
 
   @override
   void dispose() {
+    AlertListenerService.stop();
+
+    isDisposed = true;
+
     timer?.cancel();
-    controller?.dispose();
+
+    try {
+      if (controller != null) {
+        if (controller!.value.isStreamingImages) {
+          controller!.stopImageStream();
+        }
+
+        controller!.dispose();
+      }
+    } catch (_) {}
+
     super.dispose();
   }
+  // =====================================================
+  // UI
+  // =====================================================
 
   @override
   Widget build(BuildContext context) {
 
-    if (cameraClosed ||
-        controller == null ||
+    if (controller == null ||
         !controller!.value.isInitialized) {
 
       return const Scaffold(
+
         backgroundColor: Colors.black,
+
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
       );
     }
 
     return Scaffold(
+
       backgroundColor: Colors.black,
 
       body: Stack(
+
         children: [
 
-          /// 🎥 CAMERA PREVIEW
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller!.value.previewSize!.height,
-                height: controller!.value.previewSize!.width,
-                child: CameraPreview(controller!),
-              ),
+          Positioned.fill(
+
+            child: CameraPreview(
+              controller!,
             ),
           ),
 
-          /// 🔴 TIMER
           Positioned(
+
             top: 50,
             left: 20,
+
             child: Row(
+
               children: [
-                const Icon(Icons.fiber_manual_record,
-                    color: Colors.red),
+
+                const Icon(
+                  Icons.fiber_manual_record,
+                  color: Colors.red,
+                ),
+
                 const SizedBox(width: 10),
+
                 Text(
+
                   formattedTime,
+
                   style: const TextStyle(
+
                     color: Colors.white,
-                    fontSize: 18,
+
+                    fontSize: 20,
+
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
 
-          /// ⏸ PAUSE
           Positioned(
+
             bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 - 120,
+            left: 60,
+
             child: FloatingActionButton(
+
+              heroTag: "pause_btn",
+
               backgroundColor: Colors.white,
-              onPressed: _togglePause,
+
+              onPressed: togglePause,
+
               child: Icon(
-                isPaused ? Icons.play_arrow : Icons.pause,
-                color: const Color(0xFF8BC98B),
+
+                isPaused
+                    ? Icons.play_arrow
+                    : Icons.pause,
+
+                color: Colors.green,
               ),
             ),
           ),
 
-          /// ⏹ STOP
           Positioned(
-            bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 - 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.red,
-              onPressed: _stopRecording,
-              child: const Icon(Icons.stop),
-            ),
-          ),
 
-          /// 🔁 FLIP
-          Positioned(
             bottom: 40,
-            left: MediaQuery.of(context).size.width / 2 + 80,
+            right: 60,
+
             child: FloatingActionButton(
-              backgroundColor: Colors.white,
-              onPressed: _flipCamera,
-              child: const Icon(Icons.cameraswitch),
+
+              heroTag: "stop_btn",
+
+              backgroundColor: Colors.red,
+
+              onPressed: stopSession,
+
+              child: const Icon(
+                Icons.stop,
+              ),
             ),
           ),
         ],
