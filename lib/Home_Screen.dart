@@ -1,35 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'camera_recording_screen.dart';
 import 'nav_bar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'camera_recording_screen.dart';
 
-import 'services/api_service.dart';
-import 'services/socket_service.dart';
-import 'services/alert_listener_service.dart';
-
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  bool isOpeningCamera = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // 🔥 CONNECT SOCKET ONCE
-    SocketService.connect();
-
-    // 🌍 GLOBAL ALERT SYSTEM (works everywhere)
-    AlertListenerService.start(context);
-  }
-
-
+  // 🔥 Get language directly from app locale
   String text(BuildContext context, String en, String ar) {
     String lang = Localizations.localeOf(context).languageCode;
     return lang == "ar" ? ar : en;
@@ -53,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.grey.shade300,
             blurRadius: 6,
             offset: const Offset(0, 3),
-          ),
+          )
         ],
       ),
       child: Column(
@@ -70,33 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 10),
           Text("${text(context, "Date", "التاريخ")}: $date"),
           Text("${text(context, "Time", "الوقت")}: $time"),
-          Text("${text(context, "Alerts", "التنبيهات")}: $alerts"),
+          Text("${text(context, "Number of Alerts", "عدد التنبيهات")}: $alerts"),
         ],
       ),
     );
-  }
-
-  Future<void> openCamera() async {
-    if (isOpeningCamera) return;
-    isOpeningCamera = true;
-
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      int driverId = prefs.getInt("user_id") ?? 1;
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CameraRecordingScreen(driverId: driverId),
-        ),
-      );
-    } catch (e) {
-      debugPrint("Open camera error: $e");
-    } finally {
-      isOpeningCamera = false;
-    }
   }
 
   @override
@@ -104,15 +58,123 @@ class _HomeScreenState extends State<HomeScreen> {
     String lang = Localizations.localeOf(context).languageCode;
 
     return Directionality(
-      textDirection: lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+      lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        bottomNavigationBar: const CustomBottomNavBar(currentIndex: 0),
+        drawer: Drawer(
+          child: Column(
+            children: [
+
+              Container(
+                height: 120,
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: const Text(
+                  "Alerto",
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontSize: 22,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              /// PROFILE
+              ListTile(
+                leading: const Icon(
+                  Icons.person,
+                  color: Colors.green,
+                ),
+
+                title: Text(
+                  text(context, "Profile", "الملف الشخصي"),
+                ),
+
+                onTap: () {
+                  Navigator.pushReplacementNamed(
+                    context,
+                    '/profile',
+                  );
+                },
+              ),
+
+              /// HISTORY
+              ListTile(
+                leading: const Icon(
+                  Icons.history,
+                  color: Colors.green,
+                ),
+
+                title: Text(
+                  text(context, "History", "السجل"),
+                ),
+
+                onTap: () {
+                  Navigator.pushReplacementNamed(
+                    context,
+                    '/history',
+                  );
+                },
+              ),
+
+              const Spacer(),
+
+              /// LOGOUT
+              const Divider(),
+
+              ListTile(
+                leading: const Icon(
+                  Icons.logout,
+                  color: Colors.red,
+                ),
+
+                title: Text(
+                  text(context, "Logout", "تسجيل الخروج"),
+                  style: const TextStyle(
+                    color: Colors.red,
+                  ),
+                ),
+
+                onTap: () {
+
+                  /// REMOVE ALL SCREENS
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/login',
+                        (route) => false,
+                  );
+                },
+              ),
+
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Color(0xFF8BC98B)),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("  "),
+              Image.asset(
+                "assets/Logo_alerto-removebg-preview.png",
+                height: 100,
+              ),
+            ],
+          ),
+        ),
+
+        bottomNavigationBar: const CustomBottomNavBar(
+          currentIndex: 0,
+        ),
 
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
-
               TextField(
                 decoration: InputDecoration(
                   hintText: text(context, "Search", "بحث"),
@@ -125,10 +187,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 20),
 
-              Text(
-                text(context, "Recent Sessions", "الجلسات الأخيرة"),
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold),
+              Align(
+                alignment: lang == "ar"
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Text(
+                  text(context, "Recent Sessions", "الجلسات الأخيرة"),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
 
               const SizedBox(height: 10),
@@ -151,27 +220,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 20),
 
-              ElevatedButton(
-                onPressed: () async {
-                  SharedPreferences prefs =
-                  await SharedPreferences.getInstance();
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8BC98B),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: () async {
+                    SharedPreferences prefs =
+                    await SharedPreferences.getInstance();
 
-                  int driverId = prefs.getInt("user_id") ?? 1;
+                    int driverId =
+                        prefs.getInt("user_id") ?? 0;
 
-                  ApiService.sendEvent(
-                    driverId: driverId,
-                    eventType: "TestEvent",
-                    confidence: 0.95,
-                  );
-                },
-                child: const Text("Send Test Event"),
-              ),
-
-              const SizedBox(height: 10),
-
-              ElevatedButton(
-                onPressed: openCamera,
-                child: const Text("Start Session"),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CameraRecordingScreen(
+                          driverId: driverId,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    text(context, "Start Session", "ابدأ الجلسة"),
+                    style: const TextStyle(fontSize: 18,color: Colors.white),
+                  ),
+                ),
               ),
             ],
           ),

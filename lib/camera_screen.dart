@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
 import 'Home_Screen.dart';
-import 'camera_recording_screen.dart';
+import 'services/alert_listener_service.dart';
 
-class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key});
+class CameraRecordingScreen extends StatefulWidget {
+  final int driverId;
+
+  const CameraRecordingScreen({
+    super.key,
+    required this.driverId,
+  });
 
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  State<CameraRecordingScreen> createState() =>
+      _CameraRecordingScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraRecordingScreenState extends State<CameraRecordingScreen> {
   CameraController? controller;
 
   bool isDisposed = false;
@@ -20,12 +26,13 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initCamera();
-    });
+    // ✅ START REAL-TIME ALERTS WHILE RECORDING
+    AlertListenerService.start(context);
+
+    initializeCamera();
   }
 
-  Future<void> _initCamera() async {
+  Future<void> initializeCamera() async {
     try {
       final cameras = await availableCameras();
 
@@ -36,8 +43,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
       controller = CameraController(
         frontCamera,
-        ResolutionPreset.medium,
-        enableAudio: true,
+        ResolutionPreset.high,
+        enableAudio: false,
       );
 
       await controller!.initialize();
@@ -45,83 +52,42 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return;
 
       setState(() {});
-
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _showPopup();
-      });
     } catch (e) {
       debugPrint("Camera init error: $e");
     }
   }
 
-  void _showPopup() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text("Camera Recording"),
-          content: const Text("Start recording session?"),
-          actions: [
+  Future<void> stopSession() async {
+    isDisposed = true;
 
-            TextButton(
-              onPressed: () async {
-                isDisposed = true;
+    try {
+      await controller?.stopImageStream();
+      await controller?.dispose();
+    } catch (_) {}
 
-                await controller?.dispose();
-                controller = null;
+    if (!mounted) return;
 
-                if (!mounted) return;
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const HomeScreen(),
-                  ),
-                );
-              },
-              child: const Text("Deny"),
-            ),
-
-            TextButton(
-              onPressed: () async {
-                isDisposed = true;
-
-                await controller?.dispose();
-                controller = null;
-
-                if (!mounted) return;
-
-                Navigator.pop(context);
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CameraRecordingScreen(driverId: 1),
-                  ),
-                );
-              },
-              child: const Text("Allow"),
-            ),
-
-          ],
-        );
-      },
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HomeScreen(),
+      ),
     );
   }
 
   @override
   void dispose() {
+    AlertListenerService.stop();
+
     isDisposed = true;
     controller?.dispose();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (controller == null ||
-        !controller!.value.isInitialized ||
-        isDisposed) {
+    if (controller == null || !controller!.value.isInitialized) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator()),
@@ -132,24 +98,28 @@ class _CameraScreenState extends State<CameraScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-
           Positioned.fill(
             child: CameraPreview(controller!),
           ),
 
           Positioned(
-            top: 40,
-            left: 10,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () async {
-                isDisposed = true;
-                await controller?.dispose();
-                if (mounted) Navigator.pop(context);
-              },
+            top: 50,
+            left: 20,
+            child: const Text(
+              "Recording...",
+              style: TextStyle(color: Colors.white, fontSize: 18),
             ),
           ),
 
+          Positioned(
+            bottom: 40,
+            right: 40,
+            child: FloatingActionButton(
+              backgroundColor: Colors.red,
+              onPressed: stopSession,
+              child: const Icon(Icons.stop),
+            ),
+          ),
         ],
       ),
     );

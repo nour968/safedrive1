@@ -26,7 +26,7 @@ public class SocketManager {
                 };
 
                 socket = IO.socket(
-                        "http://192.168.1.61:8000",
+                        "http://192.168.1.64:8000",
                         options
                 );
 

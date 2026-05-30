@@ -16,7 +16,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // ================= SERVER =================
-  final String baseUrl = "http://192.168.1.9:8000";
+  final String baseUrl = "http://192.168.1.64:8000";
 
   // ================= FORM =================
   final _formKey = GlobalKey<FormState>();

@@ -149,7 +149,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // =========================
   Future<void> loadUser() async {
     final res = await http.get(
-      Uri.parse("http://192.168.1.9:8000/get-user/${widget.userId}"),
+      Uri.parse("http://192.168.1.64:8000/get-user/${widget.userId}"),
     );
 
     final data = jsonDecode(res.body);

@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Future<void> fetchUserData() async {
         try {
           final response = await http.get(
-            Uri.parse("http://192.168.1.9:8000/get-user/$userId"),
+            Uri.parse("http://192.168.1.64:8000/get-user/$userId"),
           );
 
           final data = jsonDecode(response.body);
