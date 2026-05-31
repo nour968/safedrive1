@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Future<void> fetchUserData() async {
         try {
           final response = await http.get(
-            Uri.parse("http://192.168.1.64:8000/get-user/$userId"),
+            Uri.parse("http://192.168.1.5:8000/get-user/$userId"),
           );
 
           final data = jsonDecode(response.body);
@@ -101,24 +101,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
   // ======================================================
+  // UPLOAD IMAGE
+  // ======================================================
+  Future<void> uploadProfileImage(
+      File imageFile,
+      ) async {
+    try {
+      var request = http.MultipartRequest(
+        "POST",
+        Uri.parse(
+          "http://192.168.1.5:8000/upload-profile-image/$userId",
+        ),
+      );
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          "image",
+          imageFile.path,
+        ),
+      );
+
+      var response = await request.send();
+
+      var responseBody =
+      await response.stream.bytesToString();
+
+      var data = jsonDecode(responseBody);
+
+      if (data["status"] == "success") {
+        await fetchUserData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data["message"]),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Upload Error: $e"),
+        ),
+      );
+    }
+  }
+  // ======================================================
   // PICK IMAGE
   // ======================================================
 
-  Future pickImage(ImageSource source) async {
+  Future<void> pickImage(
+      ImageSource source,
+      ) async {
 
-    final XFile? image = await picker.pickImage(
+    final XFile? image =
+    await picker.pickImage(
       source: source,
     );
 
-    if (image != null) {
+    if (image == null) return;
 
-      setState(() {
-
-        profileImage = File(image.path);
-
-      });
-    }
+    await uploadProfileImage(
+      File(image.path),
+    );
   }
+
 
   // ======================================================
   // IMAGE OPTIONS
@@ -280,58 +326,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // ======================================================
 
               Stack(
-
                 children: [
 
                   CircleAvatar(
-
                     radius: 55,
-
                     backgroundColor: Colors.grey[300],
 
                     backgroundImage:
-                    profileImage != null
-                        ? FileImage(profileImage!)
+                    userData?["profile_image"] != null &&
+                        userData!["profile_image"].toString().isNotEmpty
+                        ? NetworkImage(
+                      "http://192.168.1.5:8000/uploads/${userData!["profile_image"]}",
+                    )
                         : null,
 
                     child:
-                    profileImage == null
-
+                    userData?["profile_image"] == null ||
+                        userData!["profile_image"].toString().isEmpty
                         ? const Icon(
                       Icons.person,
                       size: 50,
                     )
-
                         : null,
                   ),
 
                   Positioned(
-
                     bottom: 0,
-
                     right: 0,
-
                     child: GestureDetector(
-
                       onTap: showImageOptions,
-
                       child: Container(
-
                         padding: const EdgeInsets.all(6),
-
                         decoration: const BoxDecoration(
-
                           color: Colors.green,
-
                           shape: BoxShape.circle,
                         ),
-
                         child: const Icon(
-
                           Icons.camera_alt,
-
                           color: Colors.white,
-
                           size: 18,
                         ),
                       ),
