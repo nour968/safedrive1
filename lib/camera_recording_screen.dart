@@ -225,7 +225,7 @@ class _CameraRecordingScreenState
         if (now
             .difference(lastFrameSent)
             .inMilliseconds <
-            200) {
+            300) {
           return;
         }
 
