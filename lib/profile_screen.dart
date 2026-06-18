@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Future<void> fetchUserData() async {
         try {
           final response = await http.get(
-            Uri.parse("http://192.168.1.5:8000/get-user/$userId"),
+            Uri.parse("http://192.168.1.64:8000/get-user/$userId"),
           );
 
           final data = jsonDecode(response.body);
@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       var request = http.MultipartRequest(
         "POST",
         Uri.parse(
-          "http://192.168.1.5:8000/upload-profile-image/$userId",
+          "http://192.168.1.64:8000/upload-profile-image/$userId",
         ),
       );
 
@@ -336,7 +336,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     userData?["profile_image"] != null &&
                         userData!["profile_image"].toString().isNotEmpty
                         ? NetworkImage(
-                      "http://192.168.1.5:8000/uploads/${userData!["profile_image"]}",
+                      "http://192.168.1.64:8000/uploads/${userData!["profile_image"]}",
                     )
                         : null,
 
