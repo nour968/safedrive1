@@ -4,13 +4,22 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 class SocketService {
   static late IO.Socket _socket;
 
+  // ── existing alerts stream (new_alert) ──────────────────
   static final StreamController<Map<String, dynamic>> _alertsController =
   StreamController.broadcast();
 
   static Stream<Map<String, dynamic>> get alertsStream =>
       _alertsController.stream;
 
+  // ── NEW: per-frame result stream (frame_result) ──────────
+  static final StreamController<Map<String, dynamic>> _frameResultController =
+  StreamController.broadcast();
+
+  static Stream<Map<String, dynamic>> get frameResultStream =>
+      _frameResultController.stream;
+
   static bool _connected = false;
+  static bool get connected => _connected;
 
   static void connect() {
     _socket = IO.io(
@@ -38,10 +47,16 @@ class SocketService {
       print("❌ Socket error: $error");
     });
 
-    // 🚨 ONLY SEND DATA
+    // Cooldown-gated alerts → snackbar / sound
     _socket.on("new_alert", (data) {
       final alert = Map<String, dynamic>.from(data ?? {});
       _alertsController.add(alert);
+    });
+
+    // Every-frame results → live log panel
+    _socket.on("frame_result", (data) {
+      final frame = Map<String, dynamic>.from(data ?? {});
+      _frameResultController.add(frame);
     });
   }
 
@@ -51,5 +66,6 @@ class SocketService {
 
   static void dispose() {
     _alertsController.close();
+    _frameResultController.close();
   }
 }
