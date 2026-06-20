@@ -149,7 +149,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // =========================
   Future<void> loadUser() async {
     final res = await http.get(
-      Uri.parse("http://192.168.1.64:8000/get-user/${widget.userId}"),
+      Uri.parse("http://192.168.1.4:8000/get-user/${widget.userId}"),
     );
 
     final data = jsonDecode(res.body);
@@ -176,7 +176,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final res = await http.post(
-      Uri.parse("http://192.168.1.9:8000/update-user/${widget.userId}"),
+      Uri.parse("http://192.168.1.4:8000/update-user/${widget.userId}"),
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "first_name": nameController.text.split(" ").first,
@@ -209,68 +209,120 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // =========================
   @override
   Widget build(BuildContext context) {
+    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+
     if (isLoading) {
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Edit Profile")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
+    return Directionality(
+      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          titleTextStyle: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+          backgroundColor: const Color(0xFF8BC98B),
+          title: Text(
+            text(context, "Edit Profile", "تعديل الملف الشخصي"),
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
 
-              TextFormField(
-                controller: nameController,
-                validator: nameValidator,
-                decoration: const InputDecoration(labelText: "Name"),
-              ),
+                TextFormField(
+                  controller: nameController,
+                  validator: nameValidator,
+                  decoration: InputDecoration(
+                    labelText: text(context, "Name", "الاسم"),
+                  ),
+                ),
 
-              TextFormField(
-                controller: usernameController,
-                validator: usernameValidator, // ✅ FIXED
-                onChanged: (_) {
-                  setState(() => usernameServerError = null);
-                },
-                decoration: const InputDecoration(labelText: "Username"),
-              ),
+                TextFormField(
+                  controller: usernameController,
+                  validator: usernameValidator, // ✅ FIXED
+                  onChanged: (_) {
+                    setState(() => usernameServerError = null);
+                  },
+                  decoration: InputDecoration(
+                    labelText: text(context, "Username", "اسم المستخدم"),
+                  ),
+                ),
 
-              TextFormField(
-                controller: emailController,
-                validator: emailValidator,
-                decoration: const InputDecoration(labelText: "Email"),
-              ),
+                TextFormField(
+                  controller: emailController,
+                  validator: emailValidator,
+                  decoration: InputDecoration(
+                    labelText: text(context, "Email", "البريد الإلكتروني"),
+                  ),
+                ),
 
-              TextFormField(
-                controller: ageController,
-                validator: ageValidator,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Age"),
-              ),
+                TextFormField(
+                  controller: ageController,
+                  validator: ageValidator,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: text(context, "Age", "العمر"),
+                  ),
+                ),
 
-              TextFormField(
-                controller: nationalIdController,
-                validator: nationalIdValidator,
-                decoration: const InputDecoration(labelText: "National ID"),
-              ),
+                TextFormField(
+                  controller: nationalIdController,
+                  validator: nationalIdValidator,
+                  decoration: InputDecoration(
+                    labelText: text(context, "National ID", "الرقم القومي"),
+                  ),
+                ),
 
-              TextFormField(
-                controller: licenseController,
-                validator: licensePlateValidator,
-                decoration: const InputDecoration(labelText: "License Plate"),
-              ),
+                TextFormField(
+                  controller: licenseController,
+                  validator: licensePlateValidator,
+                  decoration: InputDecoration(
+                    labelText: text(context, "License Plate", "رقم اللوحة"),
+                  ),
+                ),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              ElevatedButton(
-                onPressed: saveUser,
-                child: const Text("Save"),
-              ),
-            ],
+                // ======================================================
+                // SAVE BUTTON
+                // ======================================================
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF8BC98B),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    onPressed: saveUser,
+                    child: Text(
+                      text(context, "Save", "حفظ"),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

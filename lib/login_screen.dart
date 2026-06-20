@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:untitled1/profile_screen.dart';
+import 'home_screen.dart';
 
 import 'Forget_password.dart';
 import 'signup_screen.dart';
@@ -16,7 +16,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   // ================= SERVER =================
-  final String baseUrl = "http://192.168.1.64:8000";
+  final String baseUrl = "http://192.168.1.4:8000";
 
   // ================= FORM =================
   final _formKey = GlobalKey<FormState>();
@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // ================= CONTROLLERS =================
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
+  bool hidePassword = true;
   // ================= FIELD ERRORS =================
   String? usernameError;
   String? passwordError;
@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => ProfileScreen(),
+            builder: (_) => HomeScreen(),
           ),
         );
       }
@@ -100,11 +100,19 @@ class _LoginScreenState extends State<LoginScreen> {
     String? errorText,
     bool obscureText = false,
   }) {
+    bool isPasswordField = controller == passwordController;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
+
       child: TextFormField(
+
         controller: controller,
-        obscureText: obscureText,
+
+        obscureText:
+        isPasswordField
+            ? hidePassword
+            : obscureText,
 
         onChanged: (_) {
           setState(() {
@@ -118,23 +126,55 @@ class _LoginScreenState extends State<LoginScreen> {
 
         validator: (value) {
           if (value == null || value.isEmpty) {
-            return text(context, "Required", "مطلوب");
+            return text(
+              context,
+              "Required",
+              "مطلوب",
+            );
           }
           return null;
         },
 
         decoration: InputDecoration(
+
           hintText: hint,
-          errorText: errorText, // 🔥 RED ERROR HERE
+
+          errorText: errorText,
+
           filled: true,
+
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
+
+          contentPadding:
+          const EdgeInsets.symmetric(
             horizontal: 20,
             vertical: 16,
           ),
+
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(25),
+            borderRadius:
+            BorderRadius.circular(25),
           ),
+
+          suffixIcon:
+          isPasswordField
+              ? IconButton(
+
+            icon: Icon(
+              hidePassword
+                  ? Icons.visibility_off
+                  : Icons.visibility,
+            ),
+
+            onPressed: () {
+              setState(() {
+                hidePassword =
+                !hidePassword;
+              });
+            },
+
+          )
+              : null,
         ),
       ),
     );
@@ -233,7 +273,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     // PASSWORD
                     buildTextField(
                       context: context,
-                      hint: text(context, "Password", "كلمة المرور"),
+                      hint: text(
+                        context,
+                        "Password",
+                        "كلمة المرور",
+                      ),
                       controller: passwordController,
                       obscureText: true,
                       errorText: passwordError,

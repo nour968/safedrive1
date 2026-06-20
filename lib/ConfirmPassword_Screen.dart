@@ -79,7 +79,7 @@ class _ConfirmPasswordScreenState extends State<ConfirmPasswordScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("http://192.168.1.64:8000/reset-password"),
+        Uri.parse("http://192.168.1.4:8000/reset-password"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "email": widget.email,

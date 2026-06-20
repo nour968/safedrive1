@@ -23,7 +23,7 @@ class SocketService {
 
   static void connect() {
     _socket = IO.io(
-      "http://192.168.1.64:8000",
+      "http://192.168.1.4:8000",
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .enableAutoConnect()

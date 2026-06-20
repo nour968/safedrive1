@@ -33,6 +33,9 @@ class _CameraRecordingScreenState
   List<CameraDescription> _allCameras = [];
   int _currentCameraIndex = 0;         // tracks which camera is active
 
+  // ── ride tracking ───────────────────────────────────────
+  int? rideId;
+
   // ── state flags ─────────────────────────────────────────
   bool isStreaming     = false;
   bool processingFrame = false;
@@ -71,7 +74,25 @@ class _CameraRecordingScreenState
     super.initState();
     AlertListenerService.start(context);
     _subscribeToFrameResults();
-    initializeCamera();
+    _startRide();
+  }
+
+  // =====================================================
+  // RIDE LIFECYCLE
+  // =====================================================
+
+  Future<void> _startRide() async {
+    try {
+      final id = await ApiService.startRide(driverId: widget.driverId);
+      if (!mounted) return;
+      setState(() => rideId = id);
+    } catch (e) {
+      debugPrint("START RIDE ERROR: $e");
+    }
+
+    // Only begin the camera (and frame streaming) once we've attempted
+    // to create a ride, so frames carry a ride_id from the very start.
+    await initializeCamera();
   }
 
   // =====================================================
@@ -160,6 +181,29 @@ class _CameraRecordingScreenState
   // =====================================================
 
   Future<void> _startCamera(CameraDescription cameraDescription) async {
+    // Fully release the OLD camera hardware FIRST, before touching the new one.
+    final old = controller;
+    if (old != null) {
+      try {
+        if (old.value.isStreamingImages) {
+          await old.stopImageStream();
+        }
+        await old.dispose();
+      } catch (e) {
+        debugPrint("OLD CONTROLLER DISPOSE ERROR: $e");
+      }
+    }
+
+    if (!mounted) return;
+
+    // Clear the controller while switching so build() shows the loading
+    // spinner instead of holding onto a stale texture during the gap.
+    setState(() {
+      controller  = null;
+      isStreaming = false;
+    });
+
+    // Now it's safe to open the new camera — the old one is fully released.
     final newController = CameraController(
       cameraDescription,
       ResolutionPreset.medium,
@@ -171,28 +215,12 @@ class _CameraRecordingScreenState
 
     if (!mounted) return;
 
-    // Dispose the OLD controller BEFORE swapping in the new one.
-    final old = controller;
-    try {
-      if (old != null) {
-        if (old.value.isStreamingImages) {
-          await old.stopImageStream();
-        }
-        await old.dispose();
-      }
-    } catch (e) {
-      debugPrint("OLD CONTROLLER DISPOSE ERROR: $e");
-    }
-
-    if (!mounted) return;
-
     setState(() {
-      controller  = newController;
-      isStreaming = false;
+      controller = newController;
     });
 
     // Give the new platform view a frame to mount before touching it.
-    await Future.delayed(const Duration(milliseconds: 50));
+    await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted || isDisposed) return;
 
     try {
@@ -205,7 +233,6 @@ class _CameraRecordingScreenState
 
     await startStreaming();
   }
-
   // =====================================================
   // FLIP CAMERA
   // =====================================================
@@ -327,6 +354,7 @@ class _CameraRecordingScreenState
 
         await ApiService.sendFrame(
           driverId:    widget.driverId,
+          rideId:      rideId,
           imageBase64: base64Encode(jpg),
         );
       } catch (e) {
@@ -350,6 +378,14 @@ class _CameraRecordingScreenState
     isDisposed = true;
 
     timer?.cancel();
+
+    if (rideId != null) {
+      try {
+        await ApiService.endRide(rideId!);
+      } catch (e) {
+        debugPrint("END RIDE ERROR: $e");
+      }
+    }
 
     try {
       if (controller != null) {
@@ -382,6 +418,14 @@ class _CameraRecordingScreenState
 
     isDisposed = true;
     timer?.cancel();
+
+    // Safety net: if the screen is killed without tapping Stop
+    // (e.g. backgrounded/popped another way), still close the ride.
+    if (rideId != null) {
+      ApiService.endRide(rideId!).catchError((e) {
+        debugPrint("END RIDE (dispose) ERROR: $e");
+      });
+    }
 
     try {
       if (controller != null) {
@@ -537,9 +581,12 @@ class _CameraRecordingScreenState
         children: [
 
           // ── camera preview ────────────────────────────
-          Positioned.fill(
-            child: CameraPreview(controller!),
-          ),
+      Positioned.fill(
+      child: CameraPreview(
+      key: ValueKey(controller.hashCode),
+      controller!,
+    ),
+    ),
 
           // ── timer (top left) ──────────────────────────
           Positioned(

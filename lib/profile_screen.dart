@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Future<void> fetchUserData() async {
         try {
           final response = await http.get(
-            Uri.parse("http://192.168.1.64:8000/get-user/$userId"),
+            Uri.parse("http://192.168.1.4:8000/get-user/$userId"),
           );
 
           final data = jsonDecode(response.body);
@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       var request = http.MultipartRequest(
         "POST",
         Uri.parse(
-          "http://192.168.1.64:8000/upload-profile-image/$userId",
+          "http://192.168.1.4:8000/upload-profile-image/$userId",
         ),
       );
 
@@ -295,14 +295,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
 
         appBar: AppBar(
-
+          centerTitle: true,
           title: Text(
             text(context, "Profile", "الملف الشخصي"),
           ),
-
-          centerTitle: true,
-
-          backgroundColor: const Color(0xFFAED6AE),
+          titleTextStyle: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+          backgroundColor: const Color(0xFF8BC98B),
         ),
 
         body: isLoading
@@ -336,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     userData?["profile_image"] != null &&
                         userData!["profile_image"].toString().isNotEmpty
                         ? NetworkImage(
-                      "http://192.168.1.64:8000/uploads/${userData!["profile_image"]}",
+                      "http://192.168.1.4:8000/uploads/${userData!["profile_image"]}",
                     )
                         : null,
 
@@ -434,7 +436,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   style: ElevatedButton.styleFrom(
 
-                    backgroundColor: Colors.green[300],
+                    backgroundColor: Color(0xFF8BC98B),
 
                     padding: const EdgeInsets.symmetric(
                       horizontal: 40,

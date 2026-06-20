@@ -2,14 +2,60 @@ import 'package:flutter/material.dart';
 import 'nav_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'camera_recording_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  // 🔥 Get language directly from app locale
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final String baseUrl = "http://192.168.1.4:8000";
+
+  List<Map<String, dynamic>> rides = [];
+  bool loading = true;
+
   String text(BuildContext context, String en, String ar) {
     String lang = Localizations.localeOf(context).languageCode;
     return lang == "ar" ? ar : en;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadRides();
+  }
+
+  Future<void> loadRides() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    int userId = prefs.getInt("user_id") ?? 0;
+
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/rides/$userId"),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      setState(() {
+        rides = (data["status"] == "success")
+            ? List<Map<String, dynamic>>.from(data["rides"] ?? [])
+            : [];
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        rides = [];
+        loading = false;
+      });
+    }
   }
 
   Widget sessionCard(
@@ -19,36 +65,50 @@ class HomeScreen extends StatelessWidget {
         required String time,
         required String alerts,
       }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade300,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          )
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            color: Colors.green.shade100,
-            child: Text(
-              "${text(context, "Ride ID", "رقم الرحلة")}: $rideId",
-              style: const TextStyle(fontWeight: FontWeight.bold),
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          '/ride-detail',
+          arguments: {"rideId": rideId},
+        );
+      },
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.95,
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade300,
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            )
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+             padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8BC98B),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                "${text(context, "Ride ID", "رقم الرحلة")}: $rideId",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text("${text(context, "Date", "التاريخ")}: $date"),
-          Text("${text(context, "Time", "الوقت")}: $time"),
-          Text("${text(context, "Number of Alerts", "عدد التنبيهات")}: $alerts"),
-        ],
+            const SizedBox(height: 10),
+            Text("${text(context, "Date", "التاريخ")}: $date"),
+            Text("${text(context, "Time", "الوقت")}: $time"),
+            Text("${text(context, "Number of Alerts", "عدد التنبيهات")}: $alerts"),
+          ],
+        ),
       ),
     );
   }
@@ -58,87 +118,45 @@ class HomeScreen extends StatelessWidget {
     String lang = Localizations.localeOf(context).languageCode;
 
     return Directionality(
-      textDirection:
-      lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
+        backgroundColor: Colors.white,
         drawer: Drawer(
           child: Column(
             children: [
-
               Container(
                 height: 120,
                 color: Colors.black,
                 alignment: Alignment.center,
                 child: const Text(
                   "Alerto",
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: 22,
-                  ),
+                  style: TextStyle(color: Colors.green, fontSize: 22),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// PROFILE
               ListTile(
-                leading: const Icon(
-                  Icons.person,
-                  color: Colors.green,
-                ),
-
-                title: Text(
-                  text(context, "Profile", "الملف الشخصي"),
-                ),
-
+                leading: const Icon(Icons.person, color: Colors.green),
+                title: Text(text(context, "Profile", "الملف الشخصي")),
                 onTap: () {
-                  Navigator.pushReplacementNamed(
-                    context,
-                    '/profile',
-                  );
+                  Navigator.pushReplacementNamed(context, '/profile');
                 },
               ),
-
-              /// HISTORY
               ListTile(
-                leading: const Icon(
-                  Icons.history,
-                  color: Colors.green,
-                ),
-
-                title: Text(
-                  text(context, "History", "السجل"),
-                ),
-
+                leading: const Icon(Icons.history, color: Colors.green),
+                title: Text(text(context, "History", "السجل")),
                 onTap: () {
-                  Navigator.pushReplacementNamed(
-                    context,
-                    '/history',
-                  );
+                  Navigator.pushReplacementNamed(context, '/history');
                 },
               ),
-
               const Spacer(),
-
-              /// LOGOUT
               const Divider(),
-
               ListTile(
-                leading: const Icon(
-                  Icons.logout,
-                  color: Colors.red,
-                ),
-
+                leading: const Icon(Icons.logout, color: Colors.red),
                 title: Text(
                   text(context, "Logout", "تسجيل الخروج"),
-                  style: const TextStyle(
-                    color: Colors.red,
-                  ),
+                  style: const TextStyle(color: Colors.red),
                 ),
-
                 onTap: () {
-
-                  /// REMOVE ALL SCREENS
                   Navigator.pushNamedAndRemoveUntil(
                     context,
                     '/login',
@@ -146,7 +164,6 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
-
               const SizedBox(height: 20),
             ],
           ),
@@ -166,11 +183,7 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
-
-        bottomNavigationBar: const CustomBottomNavBar(
-          currentIndex: 0,
-        ),
-
+        bottomNavigationBar: const CustomBottomNavBar(currentIndex: 0),
         body: Padding(
           padding: const EdgeInsets.all(16),
           child: ListView(
@@ -184,42 +197,44 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
               Align(
                 alignment: lang == "ar"
                     ? Alignment.centerRight
                     : Alignment.centerLeft,
                 child: Text(
                   text(context, "Recent Sessions", "الجلسات الأخيرة"),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              sessionCard(
-                context,
-                rideId: "AB899395",
-                date: "20-11-2021",
-                time: "12:10 pm",
-                alerts: "13",
+              loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : rides.isEmpty
+                  ? Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Center(
+                  child: Text(
+                    text(context, "No recent rides", "لا توجد رحلات حديثة"),
+                  ),
+                ),
+              )
+                  : Column(
+                children: rides.take(3).map<Widget>((ride) {
+                  return sessionCard(
+                    context,
+                    rideId: (ride["ride_id"] ?? "").toString(),
+                    date: (ride["date"] ?? "").toString(),
+                    time: (ride["time"] ?? "").toString(),
+                    alerts: (ride["alerts"] ?? "").toString(),
+                  );
+                }).toList(),
               ),
-
-              sessionCard(
-                context,
-                rideId: "ADER1223",
-                date: "20-11-2021",
-                time: "2:30 pm",
-                alerts: "3",
-              ),
-
               const SizedBox(height: 20),
-
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -231,24 +246,21 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   onPressed: () async {
-                    SharedPreferences prefs =
-                    await SharedPreferences.getInstance();
+                    SharedPreferences prefs = await SharedPreferences.getInstance();
+                    int driverId = prefs.getInt("user_id") ?? 0;
 
-                    int driverId =
-                        prefs.getInt("user_id") ?? 0;
+                    if (!context.mounted) return;
 
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => CameraRecordingScreen(
-                          driverId: driverId,
-                        ),
+                        builder: (_) => CameraRecordingScreen(driverId: driverId),
                       ),
                     );
                   },
                   child: Text(
                     text(context, "Start Session", "ابدأ الجلسة"),
-                    style: const TextStyle(fontSize: 18,color: Colors.white),
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
                   ),
                 ),
               ),

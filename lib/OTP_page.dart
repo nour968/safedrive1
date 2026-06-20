@@ -74,7 +74,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("http://192.168.1.64:8000/verify-otp"),
+        Uri.parse("http://192.168.1.4:8000/verify-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "email": widget.email,
@@ -112,7 +112,7 @@ class _OtpScreenState extends State<OtpScreen> {
   Future<void> resendOtp() async {
     try {
       final response = await http.post(
-        Uri.parse("http://192.168.1.9:8000/send-otp"),
+        Uri.parse("http://192.168.1.4:8000/send-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "email": widget.email,
@@ -157,7 +157,7 @@ class _OtpScreenState extends State<OtpScreen> {
               Text(
                 text(context, "OTP Verification", "التحقق من الرمز"),
                 style: const TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.bold),
+                    fontSize: 22, fontWeight: FontWeight.bold ,color: Colors.black),
               ),
 
               const SizedBox(height: 15),

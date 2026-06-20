@@ -10,6 +10,8 @@ import 'profile_screen.dart';
 import 'history_screen.dart';
 import 'services/socket_service.dart';
 import 'camera_recording_screen.dart';
+import 'recorder_dashboard_screen.dart';
+import 'ride_detail_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +69,19 @@ class _MyAppState extends State<MyApp> {
         '/signup': (context) => const SignUpScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/history': (context) => const HistoryScreen(),
+        '/ride-detail': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+
+          if (args is! Map) {
+            return const Scaffold(
+              body: Center(child: Text("Ride details unavailable")),
+            );
+          }
+
+          return RideDetailScreen(
+            rideId: (args["rideId"] ?? "").toString(),
+          );
+        },
       },
     );
   }}
