@@ -30,9 +30,21 @@ class _OtpScreenState extends State<OtpScreen> {
   bool get isOtpComplete =>
       controllers.every((c) => c.text.isNotEmpty);
 
+  bool get isRtl => Localizations.localeOf(context).languageCode == 'ar';
+
   void nextField(int index, String value) {
-    if (value.isNotEmpty && index < 4) {
-      focusNodes[index + 1].requestFocus();
+    if (value.isNotEmpty) {
+      // 🔥 FIX: For RTL (Arabic), move to previous index (visually left)
+      // For LTR (English), move to next index (visually right)
+      if (isRtl) {
+        if (index > 0) {
+          focusNodes[index - 1].requestFocus();
+        }
+      } else {
+        if (index < 4) {
+          focusNodes[index + 1].requestFocus();
+        }
+      }
     }
     setState(() {});
   }
@@ -133,8 +145,10 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isRtl =
-        Localizations.localeOf(context).languageCode == 'ar';
+    final isRtl = Localizations.localeOf(context).languageCode == 'ar';
+
+    // 🔥 FIX: Reverse order of boxes for RTL (Arabic)
+    final boxIndices = isRtl ? List.generate(5, (i) => 4 - i) : List.generate(5, (i) => i);
 
     return Directionality(
       textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
@@ -174,10 +188,10 @@ class _OtpScreenState extends State<OtpScreen> {
 
               const SizedBox(height: 40),
 
-              // 🔥 NOW 5 BOXES
+              // 🔥 FIX: Reverse order for RTL
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(5, (index) => otpBox(index)),
+                children: boxIndices.map((index) => otpBox(index)).toList(),
               ),
 
               const SizedBox(height: 25),
