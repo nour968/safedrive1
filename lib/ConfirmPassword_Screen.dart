@@ -25,6 +25,10 @@ class _ConfirmPasswordScreenState extends State<ConfirmPasswordScreen> {
 
   bool isLoading = false;
 
+  // 🔥 NEW: Password visibility toggles
+  bool isPasswordVisible = false;
+  bool isConfirmPasswordVisible = false;
+
   bool hasUppercase = false;
   bool hasLowercase = false;
   bool hasNumber = false;
@@ -134,10 +138,11 @@ class _ConfirmPasswordScreenState extends State<ConfirmPasswordScreen> {
     );
   }
 
+  // 🔥 UPDATED: Password field with eye icon
   Widget buildPasswordField(BuildContext context) {
     return TextFormField(
       controller: passwordController,
-      obscureText: true,
+      obscureText: !isPasswordVisible,
       onChanged: checkPassword,
       validator: (value) =>
           passwordValidator(value, context),
@@ -151,14 +156,27 @@ class _ConfirmPasswordScreenState extends State<ConfirmPasswordScreen> {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
         ),
+        // 🔥 Eye icon in suffix
+        suffixIcon: IconButton(
+          icon: Icon(
+            isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+            color: Colors.grey,
+          ),
+          onPressed: () {
+            setState(() {
+              isPasswordVisible = !isPasswordVisible;
+            });
+          },
+        ),
       ),
     );
   }
 
+  // 🔥 UPDATED: Confirm password field with eye icon
   Widget buildConfirmPasswordField(BuildContext context) {
     return TextFormField(
       controller: confirmPasswordController,
-      obscureText: true,
+      obscureText: !isConfirmPasswordVisible,
       validator: (value) =>
           confirmPasswordValidator(value, context),
       decoration: InputDecoration(
@@ -170,6 +188,18 @@ class _ConfirmPasswordScreenState extends State<ConfirmPasswordScreen> {
             horizontal: 20, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
+        ),
+        // 🔥 Eye icon in suffix
+        suffixIcon: IconButton(
+          icon: Icon(
+            isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off,
+            color: Colors.grey,
+          ),
+          onPressed: () {
+            setState(() {
+              isConfirmPasswordVisible = !isConfirmPasswordVisible;
+            });
+          },
         ),
       ),
     );

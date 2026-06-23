@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class EditProfileScreen extends StatefulWidget {
@@ -64,6 +65,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
+  // 🔥 UPDATED: Username validator - English only, no spaces
   String? usernameValidator(String? value) {
     if (value == null || value.isEmpty) {
       return text(context, "Required", "مطلوب");
@@ -72,9 +74,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
       return text(
         context,
-        "Only letters, numbers, _ allowed",
-        "يسمح بالحروف والأرقام والشرطة السفلية فقط",
+        "Only English, numbers, underscore",
+        "الإنجليزية والأرقام والشرطة السفلية فقط",
       );
+    }
+
+    if (value.contains(' ')) {
+      return text(context, "No spaces allowed", "لا توجد مسافات مسموحة");
     }
 
     return usernameServerError; // 🔥 backend error here
@@ -248,14 +254,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
 
+                // 🔥 UPDATED: Username field with helper text and input formatter
                 TextFormField(
                   controller: usernameController,
                   validator: usernameValidator, // ✅ FIXED
                   onChanged: (_) {
                     setState(() => usernameServerError = null);
                   },
+                  keyboardType: TextInputType.text,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]'))
+                  ],
                   decoration: InputDecoration(
                     labelText: text(context, "Username", "اسم المستخدم"),
+                    // 🔥 Helper text below field
+                    helperText: text(
+                      context,
+                      "English letters, numbers, underscore only (no spaces)",
+                      "الحروف الإنجليزية والأرقام والشرطة السفلية فقط (بدون مسافات)",
+                    ),
+                    helperMaxLines: 2,
                   ),
                 ),
 

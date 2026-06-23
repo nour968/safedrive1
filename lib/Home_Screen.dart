@@ -18,6 +18,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> rides = [];
   bool loading = true;
 
+  final TextEditingController _searchController = TextEditingController();
+  String searchQuery = "";
+
   String text(BuildContext context, String en, String ar) {
     String lang = Localizations.localeOf(context).languageCode;
     return lang == "ar" ? ar : en;
@@ -27,6 +30,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     loadRides();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> loadRides() async {
@@ -56,6 +65,19 @@ class _HomeScreenState extends State<HomeScreen> {
         loading = false;
       });
     }
+  }
+
+  // ── filter rides by ride_id OR date, case-insensitive ──
+  List<Map<String, dynamic>> get filteredRides {
+    if (searchQuery.trim().isEmpty) return [];
+
+    final q = searchQuery.trim().toLowerCase();
+
+    return rides.where((ride) {
+      final rideId = (ride["ride_id"] ?? "").toString().toLowerCase();
+      final date = (ride["date"] ?? "").toString().toLowerCase();
+      return rideId.contains(q) || date.contains(q);
+    }).toList();
   }
 
   Widget sessionCard(
@@ -93,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-             padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: const Color(0xFF8BC98B),
                 borderRadius: BorderRadius.circular(10),
@@ -116,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     String lang = Localizations.localeOf(context).languageCode;
+    final isSearching = searchQuery.trim().isNotEmpty;
 
     return Directionality(
       textDirection: lang == "ar" ? TextDirection.rtl : TextDirection.ltr,
@@ -189,52 +212,119 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             children: [
               TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() => searchQuery = value);
+                },
                 decoration: InputDecoration(
-                  hintText: text(context, "Search", "بحث"),
+                  hintText: text(
+                    context,
+                    "Search by Ride ID or Date",
+                    "ابحث برقم الرحلة أو التاريخ",
+                  ),
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: isSearching
+                      ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => searchQuery = "");
+                    },
+                  )
+                      : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              Align(
-                alignment: lang == "ar"
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Text(
-                  text(context, "Recent Sessions", "الجلسات الأخيرة"),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 10),
-              loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : rides.isEmpty
-                  ? Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Center(
+
+              // ── SEARCH MODE ──────────────────────────────
+              if (isSearching) ...[
+                Align(
+                  alignment: lang == "ar"
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Text(
-                    text(context, "No recent rides", "لا توجد رحلات حديثة"),
+                    text(context, "Search Results", "نتائج البحث"),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
-              )
-                  : Column(
-                children: rides.take(3).map<Widget>((ride) {
-                  return sessionCard(
-                    context,
-                    rideId: (ride["ride_id"] ?? "").toString(),
-                    date: (ride["date"] ?? "").toString(),
-                    time: (ride["time"] ?? "").toString(),
-                    alerts: (ride["alerts"] ?? "").toString(),
-                  );
-                }).toList(),
-              ),
+                const SizedBox(height: 10),
+                loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : filteredRides.isEmpty
+                    ? Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Center(
+                    child: Text(
+                      text(context, "No matching rides",
+                          "لا توجد رحلات مطابقة"),
+                    ),
+                  ),
+                )
+                    : Column(
+                  children: filteredRides.map<Widget>((ride) {
+                    return sessionCard(
+                      context,
+                      rideId: (ride["ride_id"] ?? "").toString(),
+                      date: (ride["date"] ?? "").toString(),
+                      time: (ride["time"] ?? "").toString(),
+                      alerts: (ride["alerts"] ?? "").toString(),
+                    );
+                  }).toList(),
+                ),
+              ]
+
+              // ── DEFAULT MODE (Recent Sessions) ───────────
+              else ...[
+                Align(
+                  alignment: lang == "ar"
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Text(
+                    text(context, "Recent Sessions", "الجلسات الأخيرة"),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : rides.isEmpty
+                    ? Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Center(
+                    child: Text(
+                      text(context, "No recent rides",
+                          "لا توجد رحلات حديثة"),
+                    ),
+                  ),
+                )
+                    : Column(
+                  children: rides.take(3).map<Widget>((ride) {
+                    return sessionCard(
+                      context,
+                      rideId: (ride["ride_id"] ?? "").toString(),
+                      date: (ride["date"] ?? "").toString(),
+                      time: (ride["time"] ?? "").toString(),
+                      alerts: (ride["alerts"] ?? "").toString(),
+                    );
+                  }).toList(),
+                ),
+              ],
+
               const SizedBox(height: 20),
+
               SizedBox(
                 width: double.infinity,
                 height: 50,

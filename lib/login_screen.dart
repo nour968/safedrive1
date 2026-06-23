@@ -226,9 +226,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 20),
 
                     Align(
-                      alignment: Alignment.centerLeft,
+                      alignment: Localizations.localeOf(context).languageCode == 'ar'
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_back),
+                        icon: Icon(
+                          Icons.arrow_back,
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
@@ -252,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             text(
                               context,
                               "Drive safe. Someone is waiting for you.",
-                              "سوق علي مهلك",
+                              "سوق علي مهلك سوق",
                             ),
                             style: TextStyle(color: Colors.grey[600]),
                           ),

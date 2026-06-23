@@ -3,7 +3,7 @@ import 'package:untitled1/Splash_Screen.dart';
 import 'login_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
+import 'package:flutter/services.dart';
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key}); //
 
@@ -29,6 +29,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool hasNumber = false;
   bool hasSpecial = false;
   bool hasLength = false;
+
+  // 🔥 NEW: Password visibility toggle
+  bool isPasswordVisible = false;
+  bool isConfirmPasswordVisible = false;
+
   final String baseUrl = "http://192.168.1.4:8000";
   /// 🌍 Language helper
   String text(BuildContext context, String en, String ar) {
@@ -87,12 +92,104 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // 🔥 NEW: Password field with visibility toggle
+  Widget buildPasswordField({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String hint,
+    required bool isVisible,
+    required Function(bool) onToggleVisibility,
+    Function(String)? onChanged,
+    String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextFormField(
+        controller: controller,
+        obscureText: !isVisible,
+        onChanged: onChanged,
+        decoration: InputDecoration(
+          hintText: hint,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+          // 🔥 Eye icon in suffix
+          suffixIcon: IconButton(
+            icon: Icon(
+              isVisible ? Icons.visibility : Icons.visibility_off,
+              color: Colors.grey,
+            ),
+            onPressed: () => onToggleVisibility(!isVisible),
+          ),
+        ),
+        validator: validator,
+      ),
+    );
+  }
+
+  // 🔥 NEW: Username field with helper text
+  Widget buildUsernameField({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String hint,
+    required String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.text,
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]'))
+        ],
+        decoration: InputDecoration(
+          hintText: hint,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+          // 🔥 Helper text below field
+          helperText: text(
+            context,
+            "English letters, numbers, underscore only (no spaces)",
+            "الحروف الإنجليزية والأرقام والشرطة السفلية فقط (بدون مسافات)",
+          ),
+          helperMaxLines: 2,
+        ),
+        validator: validator,
+      ),
+    );
+  }
+
   // ✅ Validators remain the same
   String? nameValidator(String? value) {
     if (value == null || value.isEmpty) return text(context, "Required", "مطلوب");
     if (!RegExp(r"^[a-zA-Zأ-ي\s]+$").hasMatch(value)) return text(context, "Only letters allowed", "يسمح فقط بالحروف");
     return null;
   }
+
+  // 🔥 UPDATED: Username validator - English only, no spaces
+  String? usernameValidator(String? value) {
+    if (value == null || value.isEmpty) {
+      return text(context, "Required", "مطلوب");
+    }
+
+    if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
+      return text(
+        context,
+        "Only English, numbers, underscore",
+        "الإنجليزية والأرقام والشرطة السفلية فقط",
+      );
+    }
+
+    if (value.contains(' ')) {
+      return text(context, "No spaces allowed", "لا توجد مسافات مسموحة");
+    }
+
+    return null;
+  }
+
   String normalizeDigits(String input) {
     const arabic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
     const english = ['0','1','2','3','4','5','6','7','8','9'];
@@ -276,36 +373,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 10),
-                  SizedBox(
-                    height: 50,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_back),
-                            onPressed: () =>Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const WelcomeScreen(),
+                    SizedBox(
+                      height: 50,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Align(
+                            alignment: Localizations.localeOf(context).languageCode == 'ar'
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.arrow_back,
+                              ),
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => WelcomeScreen()),
                               ),
                             ),
                           ),
-                        ),
-                        Center(
-                          child: Text(
-                            text(context, "Sign Up", "إنشاء حساب"),
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
+                          Center(
+                            child: Text(
+                              text(context, "Sign Up", "إنشاء حساب"),
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
 
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
                     const SizedBox(height: 20),
                     Row(
                       children: [
@@ -334,10 +433,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       hint: text(context, "Age", "العمر"),
                       validator: ageValidator,
                     ),
-                    buildTextField(
+                    // 🔥 NEW: Username field with helper text
+                    buildUsernameField(
                       context: context,
                       controller: usernameController,
                       hint: text(context, "Username", "اسم المستخدم"),
+                      validator: usernameValidator,
                     ),
                     buildTextField(
                       context: context,
@@ -345,11 +446,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       hint: text(context, "Email", "البريد الإلكتروني"),
                       validator: emailValidator,
                     ),
-                    buildTextField(
+                    // 🔥 Password field with eye icon
+                    buildPasswordField(
                       context: context,
                       controller: passwordController,
                       hint: text(context, "Password", "كلمة المرور"),
-                      obscureText: true,
+                      isVisible: isPasswordVisible,
+                      onToggleVisibility: (isVisible) {
+                        setState(() {
+                          isPasswordVisible = isVisible;
+                        });
+                      },
                       onChanged: checkPassword,
                       validator: passwordValidator,
                     ),
@@ -359,11 +466,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     rule(hasLowercase, text(context, "One lowercase letter", "حرف صغير واحد")),
                     rule(hasNumber, text(context, "One number", "رقم واحد")),
                     rule(hasSpecial, text(context, "One special character", "رمز خاص واحد")),
-                    buildTextField(
+                    // 🔥 Confirm password field with eye icon
+                    buildPasswordField(
                       context: context,
                       controller: confirmPasswordController,
                       hint: text(context, "Confirm Password", "تأكيد كلمة المرور"),
-                      obscureText: true,
+                      isVisible: isConfirmPasswordVisible,
+                      onToggleVisibility: (isVisible) {
+                        setState(() {
+                          isConfirmPasswordVisible = isVisible;
+                        });
+                      },
                       validator: confirmPasswordValidator,
                     ),
                     buildTextField(
